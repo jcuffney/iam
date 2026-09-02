@@ -1,8 +1,9 @@
 use std::collections::BTreeSet;
 
 use iam_core::{
-    AdminAction, CalendarAction, CapabilityAction, CapabilityOperation, CapabilityRef, ConnectionAction, ConnectionId,
-    Constraint, Grant, GrantId, MemoryAction, Permission, PermissionSet, PrincipalId, Sensitivity, SpendAction, SpendPeriod,
+    AdminAction, CalendarAction, CapabilityAction, CapabilityOperation, CapabilityRef,
+    ConnectionAction, ConnectionId, Constraint, Grant, GrantId, MemoryAction, Permission,
+    PermissionSet, PrincipalId, Sensitivity, SpendAction, SpendPeriod,
 };
 use time::macros::datetime;
 use time::{Duration, OffsetDateTime};
@@ -53,7 +54,10 @@ fn delegation_intersects_never_unions() {
     // to the device acting on the admin's behalf.
     assert!(!eff.contains(&Permission::Admin(AdminAction::ManagePrincipals)));
     assert!(!eff.contains(&Permission::Spend(SpendAction::Approve)));
-    assert!(!eff.contains(&Permission::Memory(MemoryAction::Read, Sensitivity::Private)));
+    assert!(!eff.contains(&Permission::Memory(
+        MemoryAction::Read,
+        Sensitivity::Private
+    )));
 }
 
 #[test]
@@ -62,12 +66,22 @@ fn device_acting_for_admin_cannot_exceed_the_device_ceiling() {
     let admin = admin_perms();
 
     // Something only the admin holds: denied because the device lacks it.
-    let d = authorize(&device, Some(&admin), Assurance::Cryptographic, Permission::Admin(AdminAction::ManagePrincipals));
+    let d = authorize(
+        &device,
+        Some(&admin),
+        Assurance::Cryptographic,
+        Permission::Admin(AdminAction::ManagePrincipals),
+    );
     assert!(!d.allowed);
     assert_eq!(d.reason, Reason::NotPermittedForActor);
 
     // Even spend, which the admin holds and the device does not.
-    let d = authorize(&device, Some(&admin), Assurance::Cryptographic, Permission::Spend(SpendAction::Approve));
+    let d = authorize(
+        &device,
+        Some(&admin),
+        Assurance::Cryptographic,
+        Permission::Spend(SpendAction::Approve),
+    );
     assert!(!d.allowed);
     assert_eq!(d.reason, Reason::NotPermittedForActor);
 }
@@ -78,7 +92,12 @@ fn asserted_human_missing_permission_denies_even_when_device_has_it() {
     let device = device_perms();
     let guest = set(&[Permission::Calendar(CalendarAction::Read)]);
 
-    let d = authorize(&device, Some(&guest), Assurance::Asserted, Permission::Memory(MemoryAction::Read, Sensitivity::Shared));
+    let d = authorize(
+        &device,
+        Some(&guest),
+        Assurance::Asserted,
+        Permission::Memory(MemoryAction::Read, Sensitivity::Shared),
+    );
     assert!(!d.allowed);
     assert_eq!(d.reason, Reason::NotPermittedForAsserted);
 }
@@ -140,9 +159,19 @@ fn assurance_ladder_is_enforced_for_every_permission() {
 fn private_memory_is_refused_at_asserted() {
     let all = admin_perms();
     for action in [MemoryAction::Read, MemoryAction::Write] {
-        let d = authorize(&all, None, Assurance::Asserted, Permission::Memory(action, Sensitivity::Private));
+        let d = authorize(
+            &all,
+            None,
+            Assurance::Asserted,
+            Permission::Memory(action, Sensitivity::Private),
+        );
         assert!(!d.allowed);
-        assert_eq!(d.reason, Reason::InsufficientAssurance { required: Assurance::Cryptographic });
+        assert_eq!(
+            d.reason,
+            Reason::InsufficientAssurance {
+                required: Assurance::Cryptographic
+            }
+        );
     }
 }
 
@@ -155,7 +184,10 @@ fn shared_memory_and_calendar_are_fine_at_asserted() {
         Permission::Calendar(CalendarAction::Read),
         Permission::Calendar(CalendarAction::Write),
     ] {
-        assert!(authorize(&all, None, Assurance::Asserted, perm).allowed, "{perm}");
+        assert!(
+            authorize(&all, None, Assurance::Asserted, perm).allowed,
+            "{perm}"
+        );
     }
 }
 
@@ -163,11 +195,29 @@ fn shared_memory_and_calendar_are_fine_at_asserted() {
 fn connection_manage_requires_cryptographic_but_read_does_not() {
     let all = admin_perms();
     // A voice-asserted identity may use a connection...
-    assert!(authorize(&all, None, Assurance::Asserted, Permission::Connection(ConnectionAction::Read)).allowed);
+    assert!(
+        authorize(
+            &all,
+            None,
+            Assurance::Asserted,
+            Permission::Connection(ConnectionAction::Read)
+        )
+        .allowed
+    );
     // ...but may never manage (grant/revoke) one.
-    let d = authorize(&all, None, Assurance::Asserted, Permission::Connection(ConnectionAction::Manage));
+    let d = authorize(
+        &all,
+        None,
+        Assurance::Asserted,
+        Permission::Connection(ConnectionAction::Manage),
+    );
     assert!(!d.allowed);
-    assert_eq!(d.reason, Reason::InsufficientAssurance { required: Assurance::Cryptographic });
+    assert_eq!(
+        d.reason,
+        Reason::InsufficientAssurance {
+            required: Assurance::Cryptographic
+        }
+    );
 }
 
 #[test]
@@ -176,7 +226,12 @@ fn assurance_and_intersection_compose() {
     // permission, so it fails on membership before assurance is even reached.
     let device = device_perms();
     let admin = admin_perms();
-    let d = authorize(&device, Some(&admin), Assurance::Cryptographic, Permission::Memory(MemoryAction::Read, Sensitivity::Private));
+    let d = authorize(
+        &device,
+        Some(&admin),
+        Assurance::Cryptographic,
+        Permission::Memory(MemoryAction::Read, Sensitivity::Private),
+    );
     assert!(!d.allowed);
     assert_eq!(d.reason, Reason::NotPermittedForActor);
 }
@@ -188,7 +243,9 @@ fn assurance_and_intersection_compose() {
 fn cap_ref() -> CapabilityRef {
     CapabilityRef {
         connection_id: ConnectionId::new(),
-        operation: CapabilityOperation::ModelEndpoint { name: "claude-fable-5".into() },
+        operation: CapabilityOperation::ModelEndpoint {
+            name: "claude-fable-5".into(),
+        },
     }
 }
 
@@ -217,7 +274,13 @@ fn invocation_needs_a_grant() {
         None,
         Assurance::Asserted,
         &cap_ref(),
-        CapabilityContext { grant: None, connection_active: true, now: NOW, spend: &NullLedger, invocations: &NullLedger },
+        CapabilityContext {
+            grant: None,
+            connection_active: true,
+            now: NOW,
+            spend: &NullLedger,
+            invocations: &NullLedger,
+        },
     );
     assert!(!d.allowed);
     assert_eq!(d.reason, Reason::NoGrant);
@@ -234,7 +297,13 @@ fn invocation_needs_the_base_permission_first() {
         None,
         Assurance::Asserted,
         &cap_ref(),
-        CapabilityContext { grant: Some(&grant), connection_active: true, now: NOW, spend: &NullLedger, invocations: &NullLedger },
+        CapabilityContext {
+            grant: Some(&grant),
+            connection_active: true,
+            now: NOW,
+            spend: &NullLedger,
+            invocations: &NullLedger,
+        },
     );
     assert!(!d.allowed);
     assert_eq!(d.reason, Reason::NotPermittedForActor);
@@ -254,7 +323,13 @@ fn delegated_device_may_invoke_a_granted_capability() {
         Some(&human),
         Assurance::Asserted,
         &cap_ref(),
-        CapabilityContext { grant: Some(&grant), connection_active: true, now: NOW, spend: &NullLedger, invocations: &NullLedger },
+        CapabilityContext {
+            grant: Some(&grant),
+            connection_active: true,
+            now: NOW,
+            spend: &NullLedger,
+            invocations: &NullLedger,
+        },
     );
     assert!(d.allowed, "{:?}", d.reason);
 }
@@ -271,7 +346,13 @@ fn expired_grant_is_refused_even_when_role_permits() {
         None,
         Assurance::Cryptographic,
         &cap_ref(),
-        CapabilityContext { grant: Some(&grant), connection_active: true, now: NOW, spend: &NullLedger, invocations: &NullLedger },
+        CapabilityContext {
+            grant: Some(&grant),
+            connection_active: true,
+            now: NOW,
+            spend: &NullLedger,
+            invocations: &NullLedger,
+        },
     );
     assert!(!d.allowed);
     assert_eq!(d.reason, Reason::GrantExpired);
@@ -289,7 +370,13 @@ fn revoked_grant_is_refused() {
         None,
         Assurance::Cryptographic,
         &cap_ref(),
-        CapabilityContext { grant: Some(&grant), connection_active: true, now: NOW, spend: &NullLedger, invocations: &NullLedger },
+        CapabilityContext {
+            grant: Some(&grant),
+            connection_active: true,
+            now: NOW,
+            spend: &NullLedger,
+            invocations: &NullLedger,
+        },
     );
     assert!(!d.allowed);
     assert_eq!(d.reason, Reason::GrantRevoked);
@@ -308,7 +395,13 @@ fn inactive_connection_refuses_the_grant() {
         &cap_ref(),
         // connection_active=false models a revoked connection: every dependent
         // grant is dead immediately.
-        CapabilityContext { grant: Some(&grant), connection_active: false, now: NOW, spend: &NullLedger, invocations: &NullLedger },
+        CapabilityContext {
+            grant: Some(&grant),
+            connection_active: false,
+            now: NOW,
+            spend: &NullLedger,
+            invocations: &NullLedger,
+        },
     );
     assert!(!d.allowed);
     assert_eq!(d.reason, Reason::ConnectionInactive);
@@ -319,7 +412,13 @@ fn spend_constraint_is_checked_against_the_ledger_before_allowing() {
     let perms = invoker_perms();
     let principal = PrincipalId::new();
     let cap = cap_ref();
-    let grant = live_grant(principal, vec![Constraint::Spend { limit_minor: 1000, period: SpendPeriod::Day }]);
+    let grant = live_grant(
+        principal,
+        vec![Constraint::Spend {
+            limit_minor: 1000,
+            period: SpendPeriod::Day,
+        }],
+    );
 
     let spend = InMemorySpendLedger::new();
 
@@ -330,7 +429,13 @@ fn spend_constraint_is_checked_against_the_ledger_before_allowing() {
         None,
         Assurance::Cryptographic,
         &cap,
-        CapabilityContext { grant: Some(&grant), connection_active: true, now: NOW, spend: &spend, invocations: &NullLedger },
+        CapabilityContext {
+            grant: Some(&grant),
+            connection_active: true,
+            now: NOW,
+            spend: &spend,
+            invocations: &NullLedger,
+        },
     );
     assert!(d.allowed, "{:?}", d.reason);
 
@@ -341,10 +446,21 @@ fn spend_constraint_is_checked_against_the_ledger_before_allowing() {
         None,
         Assurance::Cryptographic,
         &cap,
-        CapabilityContext { grant: Some(&grant), connection_active: true, now: NOW, spend: &spend, invocations: &NullLedger },
+        CapabilityContext {
+            grant: Some(&grant),
+            connection_active: true,
+            now: NOW,
+            spend: &spend,
+            invocations: &NullLedger,
+        },
     );
     assert!(!d.allowed);
-    assert_eq!(d.reason, Reason::ConstraintViolated { constraint: "spend" });
+    assert_eq!(
+        d.reason,
+        Reason::ConstraintViolated {
+            constraint: "spend"
+        }
+    );
 }
 
 #[test]
@@ -352,7 +468,13 @@ fn rate_limit_constraint_is_enforced() {
     let perms = invoker_perms();
     let principal = PrincipalId::new();
     let cap = cap_ref();
-    let grant = live_grant(principal, vec![Constraint::RateLimit { max_invocations: 2, per_seconds: 60 }]);
+    let grant = live_grant(
+        principal,
+        vec![Constraint::RateLimit {
+            max_invocations: 2,
+            per_seconds: 60,
+        }],
+    );
     let invocations = InMemoryInvocationLedger::new();
 
     invocations.record(principal, &cap, NOW - Duration::seconds(10));
@@ -361,7 +483,13 @@ fn rate_limit_constraint_is_enforced() {
         None,
         Assurance::Asserted,
         &cap,
-        CapabilityContext { grant: Some(&grant), connection_active: true, now: NOW, spend: &NullLedger, invocations: &invocations },
+        CapabilityContext {
+            grant: Some(&grant),
+            connection_active: true,
+            now: NOW,
+            spend: &NullLedger,
+            invocations: &invocations,
+        },
     );
     assert!(d.allowed);
 
@@ -371,10 +499,21 @@ fn rate_limit_constraint_is_enforced() {
         None,
         Assurance::Asserted,
         &cap,
-        CapabilityContext { grant: Some(&grant), connection_active: true, now: NOW, spend: &NullLedger, invocations: &invocations },
+        CapabilityContext {
+            grant: Some(&grant),
+            connection_active: true,
+            now: NOW,
+            spend: &NullLedger,
+            invocations: &invocations,
+        },
     );
     assert!(!d.allowed);
-    assert_eq!(d.reason, Reason::ConstraintViolated { constraint: "rate_limit" });
+    assert_eq!(
+        d.reason,
+        Reason::ConstraintViolated {
+            constraint: "rate_limit"
+        }
+    );
 }
 
 #[test]
@@ -386,31 +525,54 @@ fn time_window_constraint_allows_inside_and_denies_outside() {
     // Allowed window 08:00–18:00; NOW is 12:00.
     let grant = live_grant(
         principal,
-        vec![Constraint::TimeWindow { start: time::macros::time!(08:00), end: time::macros::time!(18:00) }],
+        vec![Constraint::TimeWindow {
+            start: time::macros::time!(08:00),
+            end: time::macros::time!(18:00),
+        }],
     );
     let d = authorize_capability_invocation(
         &perms,
         None,
         Assurance::Asserted,
         &cap,
-        CapabilityContext { grant: Some(&grant), connection_active: true, now: NOW, spend: &NullLedger, invocations: &NullLedger },
+        CapabilityContext {
+            grant: Some(&grant),
+            connection_active: true,
+            now: NOW,
+            spend: &NullLedger,
+            invocations: &NullLedger,
+        },
     );
     assert!(d.allowed);
 
     // Window 20:00–23:00 excludes NOW.
     let grant = live_grant(
         principal,
-        vec![Constraint::TimeWindow { start: time::macros::time!(20:00), end: time::macros::time!(23:00) }],
+        vec![Constraint::TimeWindow {
+            start: time::macros::time!(20:00),
+            end: time::macros::time!(23:00),
+        }],
     );
     let d = authorize_capability_invocation(
         &perms,
         None,
         Assurance::Asserted,
         &cap,
-        CapabilityContext { grant: Some(&grant), connection_active: true, now: NOW, spend: &NullLedger, invocations: &NullLedger },
+        CapabilityContext {
+            grant: Some(&grant),
+            connection_active: true,
+            now: NOW,
+            spend: &NullLedger,
+            invocations: &NullLedger,
+        },
     );
     assert!(!d.allowed);
-    assert_eq!(d.reason, Reason::ConstraintViolated { constraint: "time_window" });
+    assert_eq!(
+        d.reason,
+        Reason::ConstraintViolated {
+            constraint: "time_window"
+        }
+    );
 }
 
 #[test]
@@ -421,7 +583,10 @@ fn overnight_time_window_wraps_midnight() {
     // 22:00–06:00 window. 02:00 is inside; 12:00 is outside.
     let grant = live_grant(
         principal,
-        vec![Constraint::TimeWindow { start: time::macros::time!(22:00), end: time::macros::time!(06:00) }],
+        vec![Constraint::TimeWindow {
+            start: time::macros::time!(22:00),
+            end: time::macros::time!(06:00),
+        }],
     );
 
     let at_night = datetime!(2026-09-02 02:00:00 UTC);
@@ -430,7 +595,13 @@ fn overnight_time_window_wraps_midnight() {
         None,
         Assurance::Asserted,
         &cap,
-        CapabilityContext { grant: Some(&grant), connection_active: true, now: at_night, spend: &NullLedger, invocations: &NullLedger },
+        CapabilityContext {
+            grant: Some(&grant),
+            connection_active: true,
+            now: at_night,
+            spend: &NullLedger,
+            invocations: &NullLedger,
+        },
     );
     assert!(d.allowed);
 
@@ -439,7 +610,13 @@ fn overnight_time_window_wraps_midnight() {
         None,
         Assurance::Asserted,
         &cap,
-        CapabilityContext { grant: Some(&grant), connection_active: true, now: NOW, spend: &NullLedger, invocations: &NullLedger },
+        CapabilityContext {
+            grant: Some(&grant),
+            connection_active: true,
+            now: NOW,
+            spend: &NullLedger,
+            invocations: &NullLedger,
+        },
     );
     assert!(!d.allowed);
 }
@@ -452,13 +629,22 @@ fn ledger_respects_period_boundaries() {
     // A spend from last month should not count against this month's daily or
     // monthly window.
     spend.record(principal, &cap, 5000, datetime!(2026-08-15 12:00:00 UTC));
-    assert_eq!(spend.spent_minor(principal, &cap, SpendPeriod::Month, NOW), 0);
+    assert_eq!(
+        spend.spent_minor(principal, &cap, SpendPeriod::Month, NOW),
+        0
+    );
     assert_eq!(spend.spent_minor(principal, &cap, SpendPeriod::Day, NOW), 0);
 
     // A spend earlier today counts for the day and the month.
     spend.record(principal, &cap, 700, NOW - Duration::hours(3));
-    assert_eq!(spend.spent_minor(principal, &cap, SpendPeriod::Day, NOW), 700);
-    assert_eq!(spend.spent_minor(principal, &cap, SpendPeriod::Month, NOW), 700);
+    assert_eq!(
+        spend.spent_minor(principal, &cap, SpendPeriod::Day, NOW),
+        700
+    );
+    assert_eq!(
+        spend.spent_minor(principal, &cap, SpendPeriod::Month, NOW),
+        700
+    );
 }
 
 #[test]
@@ -470,8 +656,14 @@ fn multiple_constraints_all_must_hold() {
     let grant = live_grant(
         principal,
         vec![
-            Constraint::Spend { limit_minor: 1000, period: SpendPeriod::Day },
-            Constraint::TimeWindow { start: time::macros::time!(08:00), end: time::macros::time!(18:00) },
+            Constraint::Spend {
+                limit_minor: 1000,
+                period: SpendPeriod::Day,
+            },
+            Constraint::TimeWindow {
+                start: time::macros::time!(08:00),
+                end: time::macros::time!(18:00),
+            },
         ],
     );
     // Spend fine, time fine → allowed.
@@ -480,7 +672,13 @@ fn multiple_constraints_all_must_hold() {
         None,
         Assurance::Asserted,
         &cap,
-        CapabilityContext { grant: Some(&grant), connection_active: true, now: NOW, spend: &spend, invocations: &NullLedger },
+        CapabilityContext {
+            grant: Some(&grant),
+            connection_active: true,
+            now: NOW,
+            spend: &spend,
+            invocations: &NullLedger,
+        },
     );
     assert!(d.allowed);
 
@@ -491,10 +689,21 @@ fn multiple_constraints_all_must_hold() {
         None,
         Assurance::Asserted,
         &cap,
-        CapabilityContext { grant: Some(&grant), connection_active: true, now: NOW, spend: &spend, invocations: &NullLedger },
+        CapabilityContext {
+            grant: Some(&grant),
+            connection_active: true,
+            now: NOW,
+            spend: &spend,
+            invocations: &NullLedger,
+        },
     );
     assert!(!d.allowed);
-    assert_eq!(d.reason, Reason::ConstraintViolated { constraint: "spend" });
+    assert_eq!(
+        d.reason,
+        Reason::ConstraintViolated {
+            constraint: "spend"
+        }
+    );
 }
 
 #[test]

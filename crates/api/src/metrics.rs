@@ -10,7 +10,8 @@ pub fn auth_attempt(outcome: &'static str) {
 
 /// Authorization decisions, labeled by decision and reason code.
 pub fn authorize_decision(decision: &'static str, reason: &'static str) {
-    metrics::counter!("iam_authorize_decisions_total", "decision" => decision, "reason" => reason).increment(1);
+    metrics::counter!("iam_authorize_decisions_total", "decision" => decision, "reason" => reason)
+        .increment(1);
 }
 
 /// A signature-counter regression — a possible cloned authenticator.
@@ -26,9 +27,21 @@ pub fn rate_limited(key: &'static str) {
 /// Register the counters so they appear at zero before the first event. Called
 /// once at startup after the recorder is installed.
 pub fn describe() {
-    metrics::describe_counter!("iam_auth_attempts_total", "WebAuthn authentication attempts by outcome");
-    metrics::describe_counter!("iam_authorize_decisions_total", "Authorization decisions by decision and reason");
-    metrics::describe_counter!("iam_counter_regression_total", "Signature-counter regressions (possible cloned authenticators)");
-    metrics::describe_counter!("iam_rate_limited_total", "Requests rejected by a rate limiter");
+    metrics::describe_counter!(
+        "iam_auth_attempts_total",
+        "WebAuthn authentication attempts by outcome"
+    );
+    metrics::describe_counter!(
+        "iam_authorize_decisions_total",
+        "Authorization decisions by decision and reason"
+    );
+    metrics::describe_counter!(
+        "iam_counter_regression_total",
+        "Signature-counter regressions (possible cloned authenticators)"
+    );
+    metrics::describe_counter!(
+        "iam_rate_limited_total",
+        "Requests rejected by a rate limiter"
+    );
     metrics::describe_counter!("iam_refresh_errors_total", "Connection refresh-loop errors");
 }

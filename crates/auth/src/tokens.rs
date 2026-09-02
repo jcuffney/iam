@@ -15,7 +15,9 @@ use base64::Engine;
 use base64::engine::general_purpose::{STANDARD as B64, URL_SAFE_NO_PAD as B64URL};
 use ed25519_dalek::SigningKey;
 use ed25519_dalek::pkcs8::DecodePrivateKey;
-use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, decode_header, encode};
+use jsonwebtoken::{
+    Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, decode_header, encode,
+};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
@@ -73,9 +75,15 @@ impl EnvKeySource {
             keys.insert(kid, der);
         }
         if !keys.contains_key(&parsed.active) {
-            return Err(AuthError::Config(format!("active kid {} not present in keys", parsed.active)));
+            return Err(AuthError::Config(format!(
+                "active kid {} not present in keys",
+                parsed.active
+            )));
         }
-        Ok(Self { active: parsed.active, keys })
+        Ok(Self {
+            active: parsed.active,
+            keys,
+        })
     }
 }
 
@@ -106,7 +114,11 @@ pub struct KeyRing {
 
 impl KeyRing {
     /// Build from a key source and the token's issuer/audience identity.
-    pub fn load(source: &dyn SigningKeySource, issuer: impl Into<String>, audience: impl Into<String>) -> Result<Self, AuthError> {
+    pub fn load(
+        source: &dyn SigningKeySource,
+        issuer: impl Into<String>,
+        audience: impl Into<String>,
+    ) -> Result<Self, AuthError> {
         let active_kid = source.active_kid()?;
         let raw_keys = source.keys()?;
         if raw_keys.is_empty() {
@@ -115,7 +127,8 @@ impl KeyRing {
 
         let mut keys = BTreeMap::new();
         for (kid, der) in raw_keys {
-            let signing = SigningKey::from_pkcs8_der(&der).map_err(|e| AuthError::InvalidKeyMaterial(format!("kid {kid}: {e}")))?;
+            let signing = SigningKey::from_pkcs8_der(&der)
+                .map_err(|e| AuthError::InvalidKeyMaterial(format!("kid {kid}: {e}")))?;
             let public_raw = signing.verifying_key().to_bytes();
             keys.insert(
                 kid,
@@ -131,7 +144,12 @@ impl KeyRing {
             return Err(AuthError::UnknownKeyId(active_kid));
         }
 
-        Ok(Self { active_kid, keys, issuer: issuer.into(), audience: audience.into() })
+        Ok(Self {
+            active_kid,
+            keys,
+            issuer: issuer.into(),
+            audience: audience.into(),
+        })
     }
 
     pub fn issuer(&self) -> &str {
@@ -153,7 +171,10 @@ impl KeyRing {
         issued_at: OffsetDateTime,
         expires_at: OffsetDateTime,
     ) -> Result<String, AuthError> {
-        let key = self.keys.get(&self.active_kid).ok_or(AuthError::NoSigningKey)?;
+        let key = self
+            .keys
+            .get(&self.active_kid)
+            .ok_or(AuthError::NoSigningKey)?;
         let mut header = Header::new(Algorithm::EdDSA);
         header.kid = Some(self.active_kid.clone());
 
@@ -176,7 +197,10 @@ impl KeyRing {
     pub fn verify(&self, token: &str, validate_exp: bool) -> Result<Claims, AuthError> {
         let header = decode_header(token)?;
         let kid = header.kid.ok_or(AuthError::MissingKeyId)?;
-        let key = self.keys.get(&kid).ok_or_else(|| AuthError::UnknownKeyId(kid.clone()))?;
+        let key = self
+            .keys
+            .get(&kid)
+            .ok_or_else(|| AuthError::UnknownKeyId(kid.clone()))?;
 
         let mut validation = Validation::new(Algorithm::EdDSA);
         validation.set_issuer(&[&self.issuer]);
@@ -228,10 +252,17 @@ mod tests {
     /// A stable set of key material, so multiple rings can be built over the
     /// same keys (to test rotation and audience independently of signatures).
     fn key_json(kids: &[&str]) -> BTreeMap<String, String> {
-        kids.iter().map(|k| (k.to_string(), keygen_der_b64())).collect()
+        kids.iter()
+            .map(|k| (k.to_string(), keygen_der_b64()))
+            .collect()
     }
 
-    fn ring(active: &str, keys: &BTreeMap<String, String>, issuer: &str, audience: &str) -> KeyRing {
+    fn ring(
+        active: &str,
+        keys: &BTreeMap<String, String>,
+        issuer: &str,
+        audience: &str,
+    ) -> KeyRing {
         let json = serde_json::json!({ "active": active, "keys": keys }).to_string();
         let src = EnvKeySource::from_json(&json).unwrap();
         KeyRing::load(&src, issuer, audience).unwrap()
@@ -242,7 +273,16 @@ mod tests {
         let keys = key_json(&["k1"]);
         let r = ring("k1", &keys, "iam-test", "ecosystem");
         let now = OffsetDateTime::now_utc();
-        let token = r.sign("pid", "oid", "sid", "cryptographic", now, now + Duration::minutes(15)).unwrap();
+        let token = r
+            .sign(
+                "pid",
+                "oid",
+                "sid",
+                "cryptographic",
+                now,
+                now + Duration::minutes(15),
+            )
+            .unwrap();
         let claims = r.verify(&token, true).unwrap();
         assert_eq!(claims.sub, "pid");
         assert_eq!(claims.sid, "sid");
@@ -257,7 +297,16 @@ mod tests {
         let keys = key_json(&["k1", "k2"]);
         let before = ring("k1", &keys, "iam-test", "ecosystem");
         let now = OffsetDateTime::now_utc();
-        let token = before.sign("pid", "oid", "sid", "asserted", now, now + Duration::minutes(15)).unwrap();
+        let token = before
+            .sign(
+                "pid",
+                "oid",
+                "sid",
+                "asserted",
+                now,
+                now + Duration::minutes(15),
+            )
+            .unwrap();
 
         let after = ring("k2", &keys, "iam-test", "ecosystem");
         let claims = after.verify(&token, true).unwrap();
@@ -279,9 +328,21 @@ mod tests {
         let keys = key_json(&["k1"]);
         let r = ring("k1", &keys, "iam-test", "ecosystem");
         let past = OffsetDateTime::now_utc() - Duration::hours(2);
-        let token = r.sign("pid", "oid", "sid", "cryptographic", past, past + Duration::minutes(15)).unwrap();
+        let token = r
+            .sign(
+                "pid",
+                "oid",
+                "sid",
+                "cryptographic",
+                past,
+                past + Duration::minutes(15),
+            )
+            .unwrap();
 
-        assert!(r.verify(&token, true).is_err(), "expired token must fail strict verify");
+        assert!(
+            r.verify(&token, true).is_err(),
+            "expired token must fail strict verify"
+        );
         let claims = r.verify(&token, false).unwrap();
         assert_eq!(claims.sub, "pid");
     }
@@ -294,7 +355,16 @@ mod tests {
         let signer = ring("k1", &keys, "iam-test", "ecosystem");
         let verifier = ring("k1", &keys, "iam-test", "different-audience");
         let now = OffsetDateTime::now_utc();
-        let token = signer.sign("pid", "oid", "sid", "asserted", now, now + Duration::minutes(15)).unwrap();
+        let token = signer
+            .sign(
+                "pid",
+                "oid",
+                "sid",
+                "asserted",
+                now,
+                now + Duration::minutes(15),
+            )
+            .unwrap();
         assert!(verifier.verify(&token, true).is_err());
     }
 
@@ -305,6 +375,9 @@ mod tests {
         let jwks = r.jwks();
         let arr = jwks["keys"].as_array().unwrap();
         assert_eq!(arr.len(), 2);
-        assert!(arr.iter().all(|k| k["kty"] == "OKP" && k["crv"] == "Ed25519" && k["x"].is_string()));
+        assert!(
+            arr.iter()
+                .all(|k| k["kty"] == "OKP" && k["crv"] == "Ed25519" && k["x"].is_string())
+        );
     }
 }

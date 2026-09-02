@@ -27,9 +27,16 @@ pub async fn delete(
     let credential = state.identity().get_credential(&credential_id).await?;
     let owner = credential.principal_id();
 
-    let is_self_cryptographic = owner == auth.principal.id && auth.assurance() == Assurance::Cryptographic;
+    let is_self_cryptographic =
+        owner == auth.principal.id && auth.assurance() == Assurance::Cryptographic;
     if !is_self_cryptographic {
-        require_permission(&state, &auth, Permission::Admin(AdminAction::ManagePrincipals), None).await?;
+        require_permission(
+            &state,
+            &auth,
+            Permission::Admin(AdminAction::ManagePrincipals),
+            None,
+        )
+        .await?;
     }
 
     state.identity().delete_credential(&credential_id).await?;
@@ -43,7 +50,11 @@ pub async fn delete(
             action: "credential.revoke".into(),
             decision: AuditDecision::Allow,
             assurance: Some(auth.assurance()),
-            reason: Some(format!("credential {} of {}", b64url(&credential_id), owner)),
+            reason: Some(format!(
+                "credential {} of {}",
+                b64url(&credential_id),
+                owner
+            )),
             ip: None,
         },
     )

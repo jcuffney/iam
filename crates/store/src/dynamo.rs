@@ -14,8 +14,8 @@ use async_trait::async_trait;
 use aws_sdk_dynamodb::Client;
 use aws_sdk_dynamodb::primitives::Blob;
 use aws_sdk_dynamodb::types::{
-    AttributeDefinition, AttributeValue, BillingMode, KeySchemaElement, KeyType, ReturnValue, ScalarAttributeType,
-    TimeToLiveSpecification,
+    AttributeDefinition, AttributeValue, BillingMode, KeySchemaElement, KeyType, ReturnValue,
+    ScalarAttributeType, TimeToLiveSpecification,
 };
 use iam_core::{Assurance, OrgId, PrincipalId};
 use time::OffsetDateTime;
@@ -48,8 +48,10 @@ impl DynamoStore {
     /// Create both tables if absent and enable TTL on `expires_at`. Idempotent;
     /// safe to call on every dev startup.
     pub async fn ensure_tables(&self) -> StoreResult<()> {
-        self.ensure_table(&self.challenges_table, "challenge_id").await?;
-        self.ensure_table(&self.sessions_table, "session_id").await?;
+        self.ensure_table(&self.challenges_table, "challenge_id")
+            .await?;
+        self.ensure_table(&self.sessions_table, "session_id")
+            .await?;
         Ok(())
     }
 
@@ -85,7 +87,9 @@ impl DynamoStore {
             )
             .send()
             .await
-            .map_err(|e| StoreError::Dynamo(format!("create {table}: {}", e.into_service_error())))?;
+            .map_err(|e| {
+                StoreError::Dynamo(format!("create {table}: {}", e.into_service_error()))
+            })?;
 
         // TTL is best-effort GC; not enforced. DynamoDB Local accepts this call
         // but never actually expires items, which is why reads re-check.
@@ -138,15 +142,24 @@ impl ChallengeStore for DynamoStore {
             .item("mode", s(&serde_plain(&record.mode)?))
             .item("principal_id", s(&record.principal_id.to_string()))
             .item("org_id", s(&record.org_id.to_string()))
-            .item("state", AttributeValue::B(Blob::new(record.state_blob.clone())))
+            .item(
+                "state",
+                AttributeValue::B(Blob::new(record.state_blob.clone())),
+            )
             .item(TTL_ATTRIBUTE, n(record.expires_at.unix_timestamp()))
             .send()
             .await
-            .map_err(|e| StoreError::Dynamo(format!("put challenge: {}", e.into_service_error())))?;
+            .map_err(|e| {
+                StoreError::Dynamo(format!("put challenge: {}", e.into_service_error()))
+            })?;
         Ok(())
     }
 
-    async fn take_challenge(&self, challenge_id: &str, now: OffsetDateTime) -> StoreResult<Option<ChallengeRecord>> {
+    async fn take_challenge(
+        &self,
+        challenge_id: &str,
+        now: OffsetDateTime,
+    ) -> StoreResult<Option<ChallengeRecord>> {
         // Consume-once: delete conditional on existence, returning the old item.
         let result = self
             .client
@@ -216,7 +229,11 @@ impl SessionStore for DynamoStore {
         Ok(())
     }
 
-    async fn get_session(&self, session_id: &str, now: OffsetDateTime) -> StoreResult<Option<SessionRecord>> {
+    async fn get_session(
+        &self,
+        session_id: &str,
+        now: OffsetDateTime,
+    ) -> StoreResult<Option<SessionRecord>> {
         let out = self
             .client
             .get_item()
@@ -226,7 +243,9 @@ impl SessionStore for DynamoStore {
             .await
             .map_err(|e| StoreError::Dynamo(format!("get session: {}", e.into_service_error())))?;
 
-        let Some(item) = out.item else { return Ok(None) };
+        let Some(item) = out.item else {
+            return Ok(None);
+        };
 
         let expires_at = OffsetDateTime::from_unix_timestamp(get_n(&item, TTL_ATTRIBUTE)?)
             .map_err(|e| StoreError::DataIntegrity(format!("session expires_at: {e}")))?;
@@ -255,7 +274,9 @@ impl SessionStore for DynamoStore {
             .key("session_id", s(session_id))
             .send()
             .await
-            .map_err(|e| StoreError::Dynamo(format!("revoke session: {}", e.into_service_error())))?;
+            .map_err(|e| {
+                StoreError::Dynamo(format!("revoke session: {}", e.into_service_error()))
+            })?;
         Ok(())
     }
 }
@@ -270,7 +291,8 @@ fn serde_plain<T: serde::Serialize>(v: &T) -> StoreResult<String> {
 }
 
 fn parse_plain<T: serde::de::DeserializeOwned>(s: &str, what: &str) -> StoreResult<T> {
-    serde_json::from_str(&format!("\"{s}\"")).map_err(|e| StoreError::DataIntegrity(format!("{what}: {e}")))
+    serde_json::from_str(&format!("\"{s}\""))
+        .map_err(|e| StoreError::DataIntegrity(format!("{what}: {e}")))
 }
 
 fn parse_uuid(s: &str, what: &str) -> StoreResult<uuid::Uuid> {

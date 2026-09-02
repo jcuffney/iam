@@ -31,7 +31,13 @@ pub async fn query(
     Query(q): Query<AuditQuery>,
 ) -> ApiResult<Json<Vec<AuditEvent>>> {
     auth.require_full_scope()?;
-    require_permission(&state, &auth, Permission::Admin(AdminAction::ReadAudit), None).await?;
+    require_permission(
+        &state,
+        &auth,
+        Permission::Admin(AdminAction::ReadAudit),
+        None,
+    )
+    .await?;
 
     let filter = AuditFilter {
         // Scope every query to the caller's org — an admin cannot read another

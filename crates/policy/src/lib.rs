@@ -13,7 +13,9 @@
 
 pub mod ledger;
 
-use iam_core::{Assurance, CapabilityRef, Constraint, Grant, Permission, PermissionSet, SpendPeriod};
+use iam_core::{
+    Assurance, CapabilityRef, Constraint, Grant, Permission, PermissionSet, SpendPeriod,
+};
 use time::OffsetDateTime;
 
 pub use ledger::{InMemoryInvocationLedger, InMemorySpendLedger, InvocationLedger, SpendLedger};
@@ -42,7 +44,9 @@ pub enum Reason {
     NotPermittedForAsserted,
     /// The permission is held, but the request's assurance is below the
     /// minimum the permission requires.
-    InsufficientAssurance { required: Assurance },
+    InsufficientAssurance {
+        required: Assurance,
+    },
     /// Capability-invocation only: no live grant for this principal and
     /// capability.
     NoGrant,
@@ -54,7 +58,9 @@ pub enum Reason {
     /// or expired.
     ConnectionInactive,
     /// Capability-invocation only: a constraint on the grant was violated.
-    ConstraintViolated { constraint: &'static str },
+    ConstraintViolated {
+        constraint: &'static str,
+    },
 }
 
 impl Reason {
@@ -81,7 +87,10 @@ impl Reason {
 /// the device can never let the human do something the device itself cannot,
 /// and the human's assertion can never let the device do something the human
 /// cannot. Neither party's ceiling is exceeded.
-pub fn effective_permissions(actor_perms: &PermissionSet, asserted_perms: Option<&PermissionSet>) -> PermissionSet {
+pub fn effective_permissions(
+    actor_perms: &PermissionSet,
+    asserted_perms: Option<&PermissionSet>,
+) -> PermissionSet {
     match asserted_perms {
         Some(asserted) => actor_perms.intersection(asserted).copied().collect(),
         None => actor_perms.clone(),
@@ -104,10 +113,18 @@ pub fn authorize(
     let asserted_has = asserted_perms.is_none_or(|a| a.contains(&requested));
 
     if !actor_has {
-        return Decision { allowed: false, assurance, reason: Reason::NotPermittedForActor };
+        return Decision {
+            allowed: false,
+            assurance,
+            reason: Reason::NotPermittedForActor,
+        };
     }
     if !asserted_has {
-        return Decision { allowed: false, assurance, reason: Reason::NotPermittedForAsserted };
+        return Decision {
+            allowed: false,
+            assurance,
+            reason: Reason::NotPermittedForAsserted,
+        };
     }
 
     // 2. Assurance ladder: the request must meet the permission's floor.
@@ -120,7 +137,11 @@ pub fn authorize(
         };
     }
 
-    Decision { allowed: true, assurance, reason: Reason::Allowed }
+    Decision {
+        allowed: true,
+        assurance,
+        reason: Reason::Allowed,
+    }
 }
 
 /// Inputs for a capability-invocation decision, gathered by the caller from the
@@ -154,7 +175,12 @@ pub fn authorize_capability_invocation(
     ctx: CapabilityContext<'_>,
 ) -> Decision {
     // Base permission gate first — no special path for capabilities.
-    let base = authorize(actor_perms, asserted_perms, assurance, Permission::Capability(iam_core::CapabilityAction::Invoke));
+    let base = authorize(
+        actor_perms,
+        asserted_perms,
+        assurance,
+        Permission::Capability(iam_core::CapabilityAction::Invoke),
+    );
     if !base.allowed {
         return base;
     }
@@ -162,27 +188,57 @@ pub fn authorize_capability_invocation(
     // A grant must exist and be live.
     let grant = match ctx.grant {
         Some(g) => g,
-        None => return Decision { allowed: false, assurance, reason: Reason::NoGrant },
+        None => {
+            return Decision {
+                allowed: false,
+                assurance,
+                reason: Reason::NoGrant,
+            };
+        }
     };
     if grant.is_revoked() {
-        return Decision { allowed: false, assurance, reason: Reason::GrantRevoked };
+        return Decision {
+            allowed: false,
+            assurance,
+            reason: Reason::GrantRevoked,
+        };
     }
     if grant.is_expired(ctx.now) {
-        return Decision { allowed: false, assurance, reason: Reason::GrantExpired };
+        return Decision {
+            allowed: false,
+            assurance,
+            reason: Reason::GrantExpired,
+        };
     }
     if !ctx.connection_active {
-        return Decision { allowed: false, assurance, reason: Reason::ConnectionInactive };
+        return Decision {
+            allowed: false,
+            assurance,
+            reason: Reason::ConnectionInactive,
+        };
     }
 
     // Every constraint must hold. Spend and rate are checked against the
     // ledgers *before* the invocation is authorized.
     for constraint in &grant.constraints {
-        if let Some(violated) = check_constraint(constraint, grant, effective_principal_capability, &ctx) {
-            return Decision { allowed: false, assurance, reason: Reason::ConstraintViolated { constraint: violated } };
+        if let Some(violated) =
+            check_constraint(constraint, grant, effective_principal_capability, &ctx)
+        {
+            return Decision {
+                allowed: false,
+                assurance,
+                reason: Reason::ConstraintViolated {
+                    constraint: violated,
+                },
+            };
         }
     }
 
-    Decision { allowed: true, assurance, reason: Reason::Allowed }
+    Decision {
+        allowed: true,
+        assurance,
+        reason: Reason::Allowed,
+    }
 }
 
 /// Returns `Some(name)` if the constraint is violated, `None` if it holds.
@@ -193,8 +249,13 @@ fn check_constraint(
     ctx: &CapabilityContext<'_>,
 ) -> Option<&'static str> {
     match constraint {
-        Constraint::RateLimit { max_invocations, per_seconds } => {
-            let used = ctx.invocations.invocations_in(grant.principal, capability, *per_seconds, ctx.now);
+        Constraint::RateLimit {
+            max_invocations,
+            per_seconds,
+        } => {
+            let used =
+                ctx.invocations
+                    .invocations_in(grant.principal, capability, *per_seconds, ctx.now);
             (used >= *max_invocations).then_some("rate_limit")
         }
         Constraint::TimeWindow { start, end } => {
@@ -207,8 +268,13 @@ fn check_constraint(
             };
             (!within).then_some("time_window")
         }
-        Constraint::Spend { limit_minor, period } => {
-            let spent = ctx.spend.spent_minor(grant.principal, capability, *period, ctx.now);
+        Constraint::Spend {
+            limit_minor,
+            period,
+        } => {
+            let spent = ctx
+                .spend
+                .spent_minor(grant.principal, capability, *period, ctx.now);
             (spent >= *limit_minor).then_some("spend")
         }
     }

@@ -52,11 +52,15 @@ impl Config {
             token_ttl: Duration::from_secs(env_u64("IAM_TOKEN_TTL_SECS", 900)),
             session_ttl: Duration::from_secs(env_u64("IAM_SESSION_TTL_SECS", 43_200)),
 
-            listen_addr: std::env::var("IAM_LISTEN_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".to_string()),
+            listen_addr: std::env::var("IAM_LISTEN_ADDR")
+                .unwrap_or_else(|_| "127.0.0.1:8080".to_string()),
         })
     }
 }
 
 fn env_u64(key: &str, default: u64) -> u64 {
-    std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }

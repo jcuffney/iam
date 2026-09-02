@@ -8,8 +8,8 @@ use axum::Json;
 use axum::extract::{Path, State};
 use iam_connections::NewConnection;
 use iam_core::{
-    AuditDecision, Capability, CapabilityOperation, Connection, ConnectionAction, ConnectionId, ConnectionKind, Permission,
-    RefreshState,
+    AuditDecision, Capability, CapabilityOperation, Connection, ConnectionAction, ConnectionId,
+    ConnectionKind, Permission, RefreshState,
 };
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -58,7 +58,10 @@ impl ConnectionView {
             kind: c.kind,
             scopes_held: c.scopes_held,
             expires_at: c.expires_at,
-            capabilities: capabilities.into_iter().map(|cap| cap.operation.to_string()).collect(),
+            capabilities: capabilities
+                .into_iter()
+                .map(|cap| cap.operation.to_string())
+                .collect(),
         }
     }
 }
@@ -70,14 +73,23 @@ pub async fn create(
     Json(req): Json<CreateConnectionRequest>,
 ) -> ApiResult<Json<ConnectionView>> {
     auth.require_full_scope()?;
-    require_permission(&state, &auth, Permission::Connection(ConnectionAction::Manage), None).await?;
+    require_permission(
+        &state,
+        &auth,
+        Permission::Connection(ConnectionAction::Manage),
+        None,
+    )
+    .await?;
 
     // Parse and validate declared capabilities.
     let id = ConnectionId::new();
     let mut capabilities = Vec::new();
     for op in &req.capabilities {
         let operation = CapabilityOperation::from_str(op).map_err(ApiError::BadRequest)?;
-        capabilities.push(Capability { connection_id: id, operation });
+        capabilities.push(Capability {
+            connection_id: id,
+            operation,
+        });
     }
 
     let connection = Connection {
@@ -89,7 +101,10 @@ pub async fn create(
         scopes_held: req.scopes_held,
         expires_at: req.expires_at,
         refresh: if req.refresh_secret.is_some() {
-            RefreshState::Refreshable { last_refreshed_at: None, status: None }
+            RefreshState::Refreshable {
+                last_refreshed_at: None,
+                status: None,
+            }
         } else {
             RefreshState::None
         },
@@ -130,11 +145,23 @@ pub async fn create(
 
 /// GET /connections — the caller's own connections, metadata only
 /// (connection:read).
-pub async fn list(State(state): State<AppState>, auth: Authenticated) -> ApiResult<Json<Vec<ConnectionView>>> {
+pub async fn list(
+    State(state): State<AppState>,
+    auth: Authenticated,
+) -> ApiResult<Json<Vec<ConnectionView>>> {
     auth.require_full_scope()?;
-    require_permission(&state, &auth, Permission::Connection(ConnectionAction::Read), None).await?;
+    require_permission(
+        &state,
+        &auth,
+        Permission::Connection(ConnectionAction::Read),
+        None,
+    )
+    .await?;
 
-    let connections = state.connections().list_connections(auth.principal.id).await?;
+    let connections = state
+        .connections()
+        .list_connections(auth.principal.id)
+        .await?;
     let mut views = Vec::with_capacity(connections.len());
     for c in connections {
         let caps = state.connections().list_capabilities(c.id).await?;
@@ -151,16 +178,30 @@ pub async fn revoke(
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     auth.require_full_scope()?;
-    require_permission(&state, &auth, Permission::Connection(ConnectionAction::Manage), None).await?;
-    let connection_id = ConnectionId(id.parse().map_err(|_| ApiError::BadRequest("invalid connection id".into()))?);
+    require_permission(
+        &state,
+        &auth,
+        Permission::Connection(ConnectionAction::Manage),
+        None,
+    )
+    .await?;
+    let connection_id = ConnectionId(
+        id.parse()
+            .map_err(|_| ApiError::BadRequest("invalid connection id".into()))?,
+    );
 
     // Only the owner may revoke their connection.
     let connection = state.connections().get_connection(connection_id).await?;
     if connection.principal_id != auth.principal.id {
-        return Err(ApiError::Forbidden("not the owner of this connection".into()));
+        return Err(ApiError::Forbidden(
+            "not the owner of this connection".into(),
+        ));
     }
 
-    state.connections().revoke_connection(connection_id, OffsetDateTime::now_utc()).await?;
+    state
+        .connections()
+        .revoke_connection(connection_id, OffsetDateTime::now_utc())
+        .await?;
 
     audit::record(
         &state,

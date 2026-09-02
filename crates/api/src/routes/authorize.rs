@@ -4,9 +4,13 @@
 use axum::Json;
 use axum::extract::State;
 use iam_core::{
-    Assurance, AuditDecision, CapabilityAction, CapabilityRef, Permission, PermissionSet, Principal, PrincipalId,
+    Assurance, AuditDecision, CapabilityAction, CapabilityRef, Permission, PermissionSet,
+    Principal, PrincipalId,
 };
-use iam_policy::{CapabilityContext, Decision, Reason, authorize as policy_authorize, authorize_capability_invocation};
+use iam_policy::{
+    CapabilityContext, Decision, Reason, authorize as policy_authorize,
+    authorize_capability_invocation,
+};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
@@ -68,7 +72,11 @@ pub async fn authorize(
 
     // Assurance: a device vouching for a human is `Asserted`; acting as oneself
     // carries the session's assurance (Cryptographic after a passkey login).
-    let assurance = if asserted.is_some() { Assurance::Asserted } else { auth.assurance() };
+    let assurance = if asserted.is_some() {
+        Assurance::Asserted
+    } else {
+        auth.assurance()
+    };
 
     let actor_perms = state.identity().permissions_for_principal(actor.id).await?;
     let asserted_perms: Option<PermissionSet> = match &asserted {
@@ -78,14 +86,16 @@ pub async fn authorize(
 
     // Dispatch: capability invocation vs plain permission.
     let decision = if matches!(req.action, Permission::Capability(CapabilityAction::Invoke)) {
-        let capability = req
-            .capability
-            .clone()
-            .ok_or_else(|| ApiError::BadRequest("capability required for capability:invoke".into()))?;
+        let capability = req.capability.clone().ok_or_else(|| {
+            ApiError::BadRequest("capability required for capability:invoke".into())
+        })?;
         // The grant is evaluated for the EFFECTIVE principal — the asserted
         // human when delegated, otherwise the actor.
         let effective = asserted.as_ref().map(|p| p.id).unwrap_or(actor.id);
-        let found = state.connections().find_grant_for_authorization(effective, &capability).await?;
+        let found = state
+            .connections()
+            .find_grant_for_authorization(effective, &capability)
+            .await?;
         let (grant, connection_active) = match &found {
             Some(g) => (Some(&g.grant), g.connection_active),
             None => (None, false),
@@ -119,8 +129,15 @@ async fn record_and_respond(
     decision: &Decision,
     ip: Option<std::net::IpAddr>,
 ) -> ApiResult<Json<AuthorizeResponse>> {
-    let audit_decision = if decision.allowed { AuditDecision::Allow } else { AuditDecision::Deny };
-    metrics::authorize_decision(if decision.allowed { "allow" } else { "deny" }, decision.reason.code());
+    let audit_decision = if decision.allowed {
+        AuditDecision::Allow
+    } else {
+        AuditDecision::Deny
+    };
+    metrics::authorize_decision(
+        if decision.allowed { "allow" } else { "deny" },
+        decision.reason.code(),
+    );
 
     audit::record(
         state,
@@ -189,7 +206,9 @@ fn action_label(req: &AuthorizeRequest) -> String {
 
 fn reason_detail(reason: &Reason) -> String {
     match reason {
-        Reason::InsufficientAssurance { required } => format!("insufficient_assurance:requires_{required}"),
+        Reason::InsufficientAssurance { required } => {
+            format!("insufficient_assurance:requires_{required}")
+        }
         Reason::ConstraintViolated { constraint } => format!("constraint_violated:{constraint}"),
         other => other.code().to_string(),
     }

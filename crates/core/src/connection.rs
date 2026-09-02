@@ -130,13 +130,17 @@ impl std::str::FromStr for CapabilityOperation {
             if name.is_empty() {
                 return Err("mcp operation requires a tool name".into());
             }
-            return Ok(CapabilityOperation::McpTool { name: name.to_string() });
+            return Ok(CapabilityOperation::McpTool {
+                name: name.to_string(),
+            });
         }
         if let Some(name) = s.strip_prefix("model:") {
             if name.is_empty() {
                 return Err("model operation requires an endpoint name".into());
             }
-            return Ok(CapabilityOperation::ModelEndpoint { name: name.to_string() });
+            return Ok(CapabilityOperation::ModelEndpoint {
+                name: name.to_string(),
+            });
         }
         Err(format!("unknown capability operation: {s}"))
     }
@@ -162,8 +166,12 @@ mod tests {
     #[test]
     fn capability_operation_round_trips() {
         let ops = [
-            CapabilityOperation::McpTool { name: "filesystem.read".into() },
-            CapabilityOperation::ModelEndpoint { name: "claude-fable-5".into() },
+            CapabilityOperation::McpTool {
+                name: "filesystem.read".into(),
+            },
+            CapabilityOperation::ModelEndpoint {
+                name: "claude-fable-5".into(),
+            },
             CapabilityOperation::Opaque,
         ];
         for op in ops {

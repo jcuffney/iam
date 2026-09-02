@@ -113,6 +113,9 @@ pub struct AuditFilter {
 
 impl AuditFilter {
     pub fn new() -> Self {
-        Self { limit: 100, ..Default::default() }
+        Self {
+            limit: 100,
+            ..Default::default()
+        }
     }
 }

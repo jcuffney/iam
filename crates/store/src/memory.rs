@@ -9,7 +9,8 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use iam_core::{
-    AuditEvent, Credential, Org, OrgId, PasskeyCredential, Permission, PermissionSet, Principal, PrincipalId, Role, RoleId,
+    AuditEvent, Credential, Org, OrgId, PasskeyCredential, Permission, PermissionSet, Principal,
+    PrincipalId, Role, RoleId,
 };
 use time::OffsetDateTime;
 
@@ -60,16 +61,32 @@ impl IdentityStore for MemoryIdentityStore {
     }
 
     async fn get_org(&self, id: OrgId) -> StoreResult<Org> {
-        self.data.lock().unwrap().orgs.get(&id).cloned().ok_or(StoreError::NotFound)
+        self.data
+            .lock()
+            .unwrap()
+            .orgs
+            .get(&id)
+            .cloned()
+            .ok_or(StoreError::NotFound)
     }
 
     async fn get_org_by_slug(&self, slug: &str) -> StoreResult<Org> {
-        self.data.lock().unwrap().orgs.values().find(|o| o.slug == slug).cloned().ok_or(StoreError::NotFound)
+        self.data
+            .lock()
+            .unwrap()
+            .orgs
+            .values()
+            .find(|o| o.slug == slug)
+            .cloned()
+            .ok_or(StoreError::NotFound)
     }
 
     async fn create_principal(&self, principal: &Principal) -> StoreResult<()> {
         let mut d = self.data.lock().unwrap();
-        if d.principals.values().any(|p| p.org_id == principal.org_id && p.handle == principal.handle) {
+        if d.principals
+            .values()
+            .any(|p| p.org_id == principal.org_id && p.handle == principal.handle)
+        {
             return Err(StoreError::Conflict(format!("handle {}", principal.handle)));
         }
         d.principals.insert(principal.id, principal.clone());
@@ -77,7 +94,13 @@ impl IdentityStore for MemoryIdentityStore {
     }
 
     async fn get_principal(&self, id: PrincipalId) -> StoreResult<Principal> {
-        self.data.lock().unwrap().principals.get(&id).cloned().ok_or(StoreError::NotFound)
+        self.data
+            .lock()
+            .unwrap()
+            .principals
+            .get(&id)
+            .cloned()
+            .ok_or(StoreError::NotFound)
     }
 
     async fn get_principal_by_handle(&self, org_id: OrgId, handle: &str) -> StoreResult<Principal> {
@@ -91,7 +114,11 @@ impl IdentityStore for MemoryIdentityStore {
             .ok_or(StoreError::NotFound)
     }
 
-    async fn set_principal_disabled(&self, id: PrincipalId, disabled_at: Option<OffsetDateTime>) -> StoreResult<()> {
+    async fn set_principal_disabled(
+        &self,
+        id: PrincipalId,
+        disabled_at: Option<OffsetDateTime>,
+    ) -> StoreResult<()> {
         let mut d = self.data.lock().unwrap();
         let p = d.principals.get_mut(&id).ok_or(StoreError::NotFound)?;
         p.disabled_at = disabled_at;
@@ -106,14 +133,22 @@ impl IdentityStore for MemoryIdentityStore {
             if existing.principal_id() == credential.principal_id() {
                 return Ok(false);
             }
-            return Err(StoreError::Conflict("credential id belongs to another principal".into()));
+            return Err(StoreError::Conflict(
+                "credential id belongs to another principal".into(),
+            ));
         }
         d.credentials.insert(id, credential.clone());
         Ok(true)
     }
 
     async fn get_credential(&self, credential_id: &[u8]) -> StoreResult<Credential> {
-        self.data.lock().unwrap().credentials.get(credential_id).cloned().ok_or(StoreError::NotFound)
+        self.data
+            .lock()
+            .unwrap()
+            .credentials
+            .get(credential_id)
+            .cloned()
+            .ok_or(StoreError::NotFound)
     }
 
     async fn list_credentials(&self, principal_id: PrincipalId) -> StoreResult<Vec<Credential>> {
@@ -130,19 +165,28 @@ impl IdentityStore for MemoryIdentityStore {
 
     async fn update_credential_after_auth(&self, updated: &PasskeyCredential) -> StoreResult<()> {
         let mut d = self.data.lock().unwrap();
-        let entry = d.credentials.get_mut(&updated.credential_id).ok_or(StoreError::NotFound)?;
+        let entry = d
+            .credentials
+            .get_mut(&updated.credential_id)
+            .ok_or(StoreError::NotFound)?;
         *entry = Credential::Passkey(updated.clone());
         Ok(())
     }
 
     async fn delete_credential(&self, credential_id: &[u8]) -> StoreResult<()> {
         let mut d = self.data.lock().unwrap();
-        d.credentials.remove(credential_id).map(|_| ()).ok_or(StoreError::NotFound)
+        d.credentials
+            .remove(credential_id)
+            .map(|_| ())
+            .ok_or(StoreError::NotFound)
     }
 
     async fn create_role(&self, role: &Role) -> StoreResult<()> {
         let mut d = self.data.lock().unwrap();
-        if d.roles.values().any(|r| r.org_id == role.org_id && r.name == role.name) {
+        if d.roles
+            .values()
+            .any(|r| r.org_id == role.org_id && r.name == role.name)
+        {
             return Err(StoreError::Conflict(format!("role {}", role.name)));
         }
         d.roles.insert(role.id, role.clone());
@@ -160,12 +204,17 @@ impl IdentityStore for MemoryIdentityStore {
             .ok_or(StoreError::NotFound)
     }
 
-    async fn set_role_permissions(&self, role_id: RoleId, permissions: &[Permission]) -> StoreResult<()> {
+    async fn set_role_permissions(
+        &self,
+        role_id: RoleId,
+        permissions: &[Permission],
+    ) -> StoreResult<()> {
         let mut d = self.data.lock().unwrap();
         if !d.roles.contains_key(&role_id) {
             return Err(StoreError::NotFound);
         }
-        d.role_permissions.insert(role_id, permissions.iter().copied().collect());
+        d.role_permissions
+            .insert(role_id, permissions.iter().copied().collect());
         Ok(())
     }
 
@@ -191,13 +240,27 @@ impl IdentityStore for MemoryIdentityStore {
 
     async fn roles_for_principal(&self, principal_id: PrincipalId) -> StoreResult<Vec<Role>> {
         let d = self.data.lock().unwrap();
-        let ids = d.principal_roles.get(&principal_id).cloned().unwrap_or_default();
-        Ok(ids.iter().filter_map(|id| d.roles.get(id).cloned()).collect())
+        let ids = d
+            .principal_roles
+            .get(&principal_id)
+            .cloned()
+            .unwrap_or_default();
+        Ok(ids
+            .iter()
+            .filter_map(|id| d.roles.get(id).cloned())
+            .collect())
     }
 
-    async fn permissions_for_principal(&self, principal_id: PrincipalId) -> StoreResult<PermissionSet> {
+    async fn permissions_for_principal(
+        &self,
+        principal_id: PrincipalId,
+    ) -> StoreResult<PermissionSet> {
         let d = self.data.lock().unwrap();
-        let ids = d.principal_roles.get(&principal_id).cloned().unwrap_or_default();
+        let ids = d
+            .principal_roles
+            .get(&principal_id)
+            .cloned()
+            .unwrap_or_default();
         let mut perms = PermissionSet::new();
         for id in ids {
             if let Some(role_perms) = d.role_permissions.get(&id) {
@@ -207,23 +270,40 @@ impl IdentityStore for MemoryIdentityStore {
         Ok(perms)
     }
 
-    async fn insert_codes(&self, principal_id: PrincipalId, purpose: CodePurpose, hashes: &[String]) -> StoreResult<()> {
+    async fn insert_codes(
+        &self,
+        principal_id: PrincipalId,
+        purpose: CodePurpose,
+        hashes: &[String],
+    ) -> StoreResult<()> {
         let mut d = self.data.lock().unwrap();
         for hash in hashes {
             d.codes.insert(
                 uuid::Uuid::new_v4(),
-                CodeRow { principal_id, purpose, hash: hash.clone(), used: false },
+                CodeRow {
+                    principal_id,
+                    purpose,
+                    hash: hash.clone(),
+                    used: false,
+                },
             );
         }
         Ok(())
     }
 
-    async fn list_unused_codes(&self, principal_id: PrincipalId, purpose: CodePurpose) -> StoreResult<Vec<StoredCode>> {
+    async fn list_unused_codes(
+        &self,
+        principal_id: PrincipalId,
+        purpose: CodePurpose,
+    ) -> StoreResult<Vec<StoredCode>> {
         let d = self.data.lock().unwrap();
         Ok(d.codes
             .iter()
             .filter(|(_, c)| c.principal_id == principal_id && c.purpose == purpose && !c.used)
-            .map(|(id, c)| StoredCode { id: *id, code_hash: c.hash.clone() })
+            .map(|(id, c)| StoredCode {
+                id: *id,
+                code_hash: c.hash.clone(),
+            })
             .collect())
     }
 
@@ -239,9 +319,14 @@ impl IdentityStore for MemoryIdentityStore {
         }
     }
 
-    async fn delete_unused_codes(&self, principal_id: PrincipalId, purpose: CodePurpose) -> StoreResult<()> {
+    async fn delete_unused_codes(
+        &self,
+        principal_id: PrincipalId,
+        purpose: CodePurpose,
+    ) -> StoreResult<()> {
         let mut d = self.data.lock().unwrap();
-        d.codes.retain(|_, c| !(c.principal_id == principal_id && c.purpose == purpose && !c.used));
+        d.codes
+            .retain(|_, c| !(c.principal_id == principal_id && c.purpose == purpose && !c.used));
         Ok(())
     }
 }
@@ -299,11 +384,18 @@ impl MemoryChallengeStore {
 #[async_trait]
 impl ChallengeStore for MemoryChallengeStore {
     async fn put_challenge(&self, record: &ChallengeRecord) -> StoreResult<()> {
-        self.challenges.lock().unwrap().insert(record.challenge_id.clone(), record.clone());
+        self.challenges
+            .lock()
+            .unwrap()
+            .insert(record.challenge_id.clone(), record.clone());
         Ok(())
     }
 
-    async fn take_challenge(&self, challenge_id: &str, now: OffsetDateTime) -> StoreResult<Option<ChallengeRecord>> {
+    async fn take_challenge(
+        &self,
+        challenge_id: &str,
+        now: OffsetDateTime,
+    ) -> StoreResult<Option<ChallengeRecord>> {
         let mut c = self.challenges.lock().unwrap();
         match c.remove(challenge_id) {
             // Expiry is enforced here, not left to a TTL sweep.
@@ -328,11 +420,18 @@ impl MemorySessionStore {
 #[async_trait]
 impl SessionStore for MemorySessionStore {
     async fn put_session(&self, record: &SessionRecord) -> StoreResult<()> {
-        self.sessions.lock().unwrap().insert(record.session_id.clone(), record.clone());
+        self.sessions
+            .lock()
+            .unwrap()
+            .insert(record.session_id.clone(), record.clone());
         Ok(())
     }
 
-    async fn get_session(&self, session_id: &str, now: OffsetDateTime) -> StoreResult<Option<SessionRecord>> {
+    async fn get_session(
+        &self,
+        session_id: &str,
+        now: OffsetDateTime,
+    ) -> StoreResult<Option<SessionRecord>> {
         let s = self.sessions.lock().unwrap();
         match s.get(session_id) {
             Some(rec) if !rec.is_expired(now) => Ok(Some(rec.clone())),

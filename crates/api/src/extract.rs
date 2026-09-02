@@ -32,9 +32,9 @@ impl Authenticated {
     pub fn require_full_scope(&self) -> Result<(), ApiError> {
         match self.session.scope {
             SessionScope::Full => Ok(()),
-            SessionScope::CredentialRegistrationOnly => {
-                Err(ApiError::Forbidden("this session may only register a new credential".into()))
-            }
+            SessionScope::CredentialRegistrationOnly => Err(ApiError::Forbidden(
+                "this session may only register a new credential".into(),
+            )),
         }
     }
 }
@@ -42,8 +42,12 @@ impl Authenticated {
 impl FromRequestParts<AppState> for Authenticated {
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
-        let token = bearer_token(parts).ok_or_else(|| ApiError::Unauthorized("missing bearer token".into()))?;
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let token = bearer_token(parts)
+            .ok_or_else(|| ApiError::Unauthorized("missing bearer token".into()))?;
 
         // Signature + issuer + audience + expiry.
         let claims = state
@@ -76,7 +80,13 @@ impl FromRequestParts<AppState> for Authenticated {
 
 /// Extract the raw bearer token from the Authorization header.
 fn bearer_token(parts: &Parts) -> Option<String> {
-    let value = parts.headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
-    let token = value.strip_prefix("Bearer ").or_else(|| value.strip_prefix("bearer "))?;
+    let value = parts
+        .headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?;
+    let token = value
+        .strip_prefix("Bearer ")
+        .or_else(|| value.strip_prefix("bearer "))?;
     Some(token.trim().to_string())
 }

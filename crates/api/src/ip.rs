@@ -29,5 +29,8 @@ pub fn client_ip(parts: &Parts) -> Option<IpAddr> {
     {
         return Some(ip);
     }
-    parts.extensions.get::<ConnectInfo<SocketAddr>>().map(|ci| ci.0.ip())
+    parts
+        .extensions
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|ci| ci.0.ip())
 }

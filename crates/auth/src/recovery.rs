@@ -47,7 +47,10 @@ pub fn generate_registration_token() -> String {
 /// Normalize a code for comparison: uppercase, strip separators and spaces.
 /// Users may retype codes with different casing or omit the dashes.
 fn normalize(code: &str) -> String {
-    code.chars().filter(|c| c.is_alphanumeric()).flat_map(|c| c.to_uppercase()).collect()
+    code.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(|c| c.to_uppercase())
+        .collect()
 }
 
 /// Hash a code for storage (argon2id PHC string). argon2 0.6 generates the
@@ -66,7 +69,9 @@ pub fn verify_code(code: &str, stored_hash: &str) -> bool {
     let Ok(parsed) = PasswordHash::new(stored_hash) else {
         return false;
     };
-    Argon2::default().verify_password(normalized.as_bytes(), &parsed).is_ok()
+    Argon2::default()
+        .verify_password(normalized.as_bytes(), &parsed)
+        .is_ok()
 }
 
 /// Encode arbitrary bytes as a compact token (used where a URL-safe opaque

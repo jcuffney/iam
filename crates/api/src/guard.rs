@@ -23,7 +23,10 @@ pub async fn require_permission(
     permission: Permission,
     ip: Option<IpAddr>,
 ) -> ApiResult<()> {
-    let perms = state.identity().permissions_for_principal(auth.principal.id).await?;
+    let perms = state
+        .identity()
+        .permissions_for_principal(auth.principal.id)
+        .await?;
     let decision = authorize(&perms, None, auth.assurance(), permission);
 
     if !decision.allowed {
@@ -41,7 +44,11 @@ pub async fn require_permission(
             },
         )
         .await;
-        return Err(ApiError::Forbidden(format!("{} denied ({})", permission, decision.reason.code())));
+        return Err(ApiError::Forbidden(format!(
+            "{} denied ({})",
+            permission,
+            decision.reason.code()
+        )));
     }
     Ok(())
 }

@@ -37,16 +37,26 @@ pub struct NewConnection<'a> {
 pub trait ConnectionsStore: Send + Sync {
     async fn create_connection(&self, new: NewConnection<'_>) -> ConnectionsResult<()>;
     async fn get_connection(&self, id: ConnectionId) -> ConnectionsResult<Connection>;
-    async fn list_connections(&self, principal_id: PrincipalId) -> ConnectionsResult<Vec<Connection>>;
+    async fn list_connections(
+        &self,
+        principal_id: PrincipalId,
+    ) -> ConnectionsResult<Vec<Connection>>;
     /// Revoke a connection. Every grant referencing it becomes non-live
     /// immediately (validity is evaluated jointly at read time).
-    async fn revoke_connection(&self, id: ConnectionId, at: OffsetDateTime) -> ConnectionsResult<()>;
+    async fn revoke_connection(
+        &self,
+        id: ConnectionId,
+        at: OffsetDateTime,
+    ) -> ConnectionsResult<()>;
 
     /// Decrypt and return the bearer secret. The only method that yields
     /// plaintext; used by the (future) invocation proxy after authorization.
     async fn reveal_secret(&self, id: ConnectionId) -> ConnectionsResult<Vec<u8>>;
 
-    async fn list_capabilities(&self, connection_id: ConnectionId) -> ConnectionsResult<Vec<Capability>>;
+    async fn list_capabilities(
+        &self,
+        connection_id: ConnectionId,
+    ) -> ConnectionsResult<Vec<Capability>>;
 
     async fn create_grant(&self, grant: &Grant) -> ConnectionsResult<()>;
     async fn get_grant(&self, id: GrantId) -> ConnectionsResult<Grant>;
@@ -66,7 +76,11 @@ pub trait ConnectionsStore: Send + Sync {
 
     /// Connections whose secret is refreshable and whose expiry is within
     /// `within_secs` of `now` (or already past). The refresh loop's work list.
-    async fn list_refresh_due(&self, now: OffsetDateTime, within_secs: i64) -> ConnectionsResult<Vec<Connection>>;
+    async fn list_refresh_due(
+        &self,
+        now: OffsetDateTime,
+        within_secs: i64,
+    ) -> ConnectionsResult<Vec<Connection>>;
     /// Record the outcome of a refresh attempt.
     async fn record_refresh(
         &self,

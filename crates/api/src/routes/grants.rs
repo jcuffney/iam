@@ -7,7 +7,8 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use iam_core::{
-    AuditDecision, CapabilityRef, Connection, ConnectionAction, Constraint, Grant, GrantId, Permission, PrincipalId,
+    AuditDecision, CapabilityRef, Connection, ConnectionAction, Constraint, Grant, GrantId,
+    Permission, PrincipalId,
 };
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -46,10 +47,19 @@ pub async fn create(
     Json(req): Json<CreateGrantRequest>,
 ) -> ApiResult<Json<GrantView>> {
     auth.require_full_scope()?;
-    require_permission(&state, &auth, Permission::Connection(ConnectionAction::Manage), None).await?;
+    require_permission(
+        &state,
+        &auth,
+        Permission::Connection(ConnectionAction::Manage),
+        None,
+    )
+    .await?;
 
     // The actor must own the connection being granted over.
-    let connection = state.connections().get_connection(req.capability.connection_id).await?;
+    let connection = state
+        .connections()
+        .get_connection(req.capability.connection_id)
+        .await?;
     ensure_owner(&connection, &auth)?;
 
     // The grantee must be a real principal in the actor's org.
@@ -61,8 +71,14 @@ pub async fn create(
     // The operation must be one the connection actually declared (this also
     // enforces "opaque connections are grantable only as a whole", since an
     // opaque connection declares only `*`).
-    let declared = state.connections().list_capabilities(req.capability.connection_id).await?;
-    if !declared.iter().any(|c| c.operation == req.capability.operation) {
+    let declared = state
+        .connections()
+        .list_capabilities(req.capability.connection_id)
+        .await?;
+    if !declared
+        .iter()
+        .any(|c| c.operation == req.capability.operation)
+    {
         return Err(ApiError::BadRequest(format!(
             "capability {} is not declared on this connection",
             req.capability.operation
@@ -112,15 +128,30 @@ pub async fn revoke(
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     auth.require_full_scope()?;
-    require_permission(&state, &auth, Permission::Connection(ConnectionAction::Manage), None).await?;
-    let grant_id = GrantId(id.parse().map_err(|_| ApiError::BadRequest("invalid grant id".into()))?);
+    require_permission(
+        &state,
+        &auth,
+        Permission::Connection(ConnectionAction::Manage),
+        None,
+    )
+    .await?;
+    let grant_id = GrantId(
+        id.parse()
+            .map_err(|_| ApiError::BadRequest("invalid grant id".into()))?,
+    );
 
     // Must own the connection the grant is over.
     let grant = state.connections().get_grant(grant_id).await?;
-    let connection = state.connections().get_connection(grant.capability.connection_id).await?;
+    let connection = state
+        .connections()
+        .get_connection(grant.capability.connection_id)
+        .await?;
     ensure_owner(&connection, &auth)?;
 
-    state.connections().revoke_grant(grant_id, OffsetDateTime::now_utc()).await?;
+    state
+        .connections()
+        .revoke_grant(grant_id, OffsetDateTime::now_utc())
+        .await?;
 
     audit::record(
         &state,
@@ -142,7 +173,9 @@ pub async fn revoke(
 
 fn ensure_owner(connection: &Connection, auth: &Authenticated) -> ApiResult<()> {
     if connection.principal_id != auth.principal.id {
-        return Err(ApiError::Forbidden("not the owner of this connection".into()));
+        return Err(ApiError::Forbidden(
+            "not the owner of this connection".into(),
+        ));
     }
     Ok(())
 }

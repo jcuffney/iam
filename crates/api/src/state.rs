@@ -27,7 +27,10 @@ impl RateLimiters {
     /// `per_minute` requests are allowed per key per minute (with a small burst).
     pub fn new(per_minute: u32) -> Self {
         let quota = Quota::per_minute(NonZeroU32::new(per_minute.max(1)).unwrap());
-        Self { by_ip: RateLimiter::keyed(quota), by_principal: RateLimiter::keyed(quota) }
+        Self {
+            by_ip: RateLimiter::keyed(quota),
+            by_principal: RateLimiter::keyed(quota),
+        }
     }
 
     /// Drop rate-limiter state for keys that have fully recovered, so memory

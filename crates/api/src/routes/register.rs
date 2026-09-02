@@ -63,18 +63,26 @@ pub async fn start(
     enforce_principal(&state, principal.id.0)?;
 
     // Verify and CONSUME a matching registration token (single use).
-    consume_one_time_code(&state, principal.id, CodePurpose::Registration, &req.registration_token)
-        .await
-        .map_err(|_| {
-            // Uniform error; do not reveal whether the handle or the token was
-            // the problem.
-            ApiError::Unauthorized("registration failed".into())
-        })?;
+    consume_one_time_code(
+        &state,
+        principal.id,
+        CodePurpose::Registration,
+        &req.registration_token,
+    )
+    .await
+    .map_err(|_| {
+        // Uniform error; do not reveal whether the handle or the token was
+        // the problem.
+        ApiError::Unauthorized("registration failed".into())
+    })?;
 
     let existing = existing_credential_ids(&state, principal.id).await?;
-    let (ccr, state_blob) = state
-        .webauthn()
-        .start_registration(principal.id.0, &principal.handle, &principal.display_name, &existing)?;
+    let (ccr, state_blob) = state.webauthn().start_registration(
+        principal.id.0,
+        &principal.handle,
+        &principal.display_name,
+        &existing,
+    )?;
 
     let challenge_id = Uuid::new_v4().to_string();
     state
@@ -104,7 +112,10 @@ pub async fn start(
     )
     .await;
 
-    Ok(Json(RegisterStartResponse { challenge_id, public_key: ccr }))
+    Ok(Json(RegisterStartResponse {
+        challenge_id,
+        public_key: ccr,
+    }))
 }
 
 /// POST /register/device/start — add another credential to the authenticated
@@ -157,7 +168,10 @@ pub async fn device_start(
     )
     .await;
 
-    Ok(Json(RegisterStartResponse { challenge_id, public_key: ccr }))
+    Ok(Json(RegisterStartResponse {
+        challenge_id,
+        public_key: ccr,
+    }))
 }
 
 #[derive(Deserialize)]
@@ -189,7 +203,10 @@ pub async fn finish(
     let now = OffsetDateTime::now_utc();
     let raw_id = req.credential.raw_id.as_ref().to_vec();
 
-    let challenge = state.challenges().take_challenge(&req.challenge_id, now).await?;
+    let challenge = state
+        .challenges()
+        .take_challenge(&req.challenge_id, now)
+        .await?;
 
     let Some(challenge) = challenge else {
         // Challenge gone: either expired, or this is a retry after a successful
@@ -204,7 +221,12 @@ pub async fn finish(
         return Err(ApiError::BadRequest("unknown or expired challenge".into()));
     };
 
-    let registered = state.webauthn().finish_registration(challenge.principal_id, &req.credential, &challenge.state_blob, req.nickname)?;
+    let registered = state.webauthn().finish_registration(
+        challenge.principal_id,
+        &req.credential,
+        &challenge.state_blob,
+        req.nickname,
+    )?;
 
     let credential = iam_core::Credential::Passkey(registered.credential);
     let created = state.identity().insert_credential(&credential).await?;
@@ -218,7 +240,14 @@ pub async fn finish(
             action: "register.finish".into(),
             decision: AuditDecision::Allow,
             assurance: None,
-            reason: Some(if created { "credential registered" } else { "idempotent retry" }.into()),
+            reason: Some(
+                if created {
+                    "credential registered"
+                } else {
+                    "idempotent retry"
+                }
+                .into(),
+            ),
             ip,
         },
     )
@@ -233,8 +262,17 @@ pub async fn finish(
 
 // --- helpers ---
 
-async fn existing_credential_ids(state: &AppState, principal_id: PrincipalId) -> ApiResult<Vec<Vec<u8>>> {
-    Ok(state.identity().list_credentials(principal_id).await?.iter().map(|c| c.credential_id().to_vec()).collect())
+async fn existing_credential_ids(
+    state: &AppState,
+    principal_id: PrincipalId,
+) -> ApiResult<Vec<Vec<u8>>> {
+    Ok(state
+        .identity()
+        .list_credentials(principal_id)
+        .await?
+        .iter()
+        .map(|c| c.credential_id().to_vec())
+        .collect())
 }
 
 /// Verify a presented one-time code against the principal's unused codes and
@@ -245,7 +283,10 @@ pub(crate) async fn consume_one_time_code(
     purpose: CodePurpose,
     presented: &str,
 ) -> ApiResult<()> {
-    let candidates = state.identity().list_unused_codes(principal_id, purpose).await?;
+    let candidates = state
+        .identity()
+        .list_unused_codes(principal_id, purpose)
+        .await?;
     for candidate in candidates {
         if verify_code(presented, &candidate.code_hash) {
             // Race-safe single use: only the first caller to flip used_at wins.

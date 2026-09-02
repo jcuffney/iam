@@ -21,14 +21,19 @@ pub use crypto::{EncryptionKey, Sealed};
 pub use error::{ConnectionsError, ConnectionsResult};
 pub use memory::MemoryConnectionsStore;
 pub use postgres::PgConnectionsStore;
-pub use refresh::{LoggingRefreshProvider, RefreshConfig, RefreshOutcome, RefreshProvider, run_refresh_loop, tick};
+pub use refresh::{
+    LoggingRefreshProvider, RefreshConfig, RefreshOutcome, RefreshProvider, run_refresh_loop, tick,
+};
 pub use store::{ConnectionsStore, GrantForAuthorization, NewConnection};
 
 use sqlx::postgres::PgPoolOptions;
 
 /// Connect to the connections database with its own pool.
 pub async fn connect(database_url: &str, max_connections: u32) -> ConnectionsResult<sqlx::PgPool> {
-    let pool = PgPoolOptions::new().max_connections(max_connections).connect(database_url).await?;
+    let pool = PgPoolOptions::new()
+        .max_connections(max_connections)
+        .connect(database_url)
+        .await?;
     Ok(pool)
 }
 

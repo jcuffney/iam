@@ -22,13 +22,19 @@ const RETRY_AFTER_SECS: u64 = 60;
 
 /// Middleware: limit by client IP. Applied to credential endpoints before the
 /// auth extractor runs, so unauthenticated floods are shed early.
-pub async fn limit_by_ip(State(state): State<AppState>, req: Request, next: Next) -> Result<Response, ApiError> {
+pub async fn limit_by_ip(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next,
+) -> Result<Response, ApiError> {
     let (parts, body) = req.into_parts();
     if let Some(ip) = client_ip(&parts)
         && state.limiters().by_ip.check_key(&ip).is_err()
     {
         metrics::rate_limited("ip");
-        return Err(ApiError::RateLimited { retry_after_secs: RETRY_AFTER_SECS });
+        return Err(ApiError::RateLimited {
+            retry_after_secs: RETRY_AFTER_SECS,
+        });
     }
     Ok(next.run(Request::from_parts(parts, body)).await)
 }
@@ -37,9 +43,16 @@ pub async fn limit_by_ip(State(state): State<AppState>, req: Request, next: Next
 /// (e.g. `/auth/start` after resolving the handle, `/register/device/start`
 /// after authentication).
 pub fn enforce_principal(state: &AppState, principal_id: Uuid) -> ApiResult<()> {
-    if state.limiters().by_principal.check_key(&principal_id).is_err() {
+    if state
+        .limiters()
+        .by_principal
+        .check_key(&principal_id)
+        .is_err()
+    {
         metrics::rate_limited("principal");
-        return Err(ApiError::RateLimited { retry_after_secs: RETRY_AFTER_SECS });
+        return Err(ApiError::RateLimited {
+            retry_after_secs: RETRY_AFTER_SECS,
+        });
     }
     Ok(())
 }

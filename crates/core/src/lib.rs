@@ -20,14 +20,16 @@ mod role;
 
 pub use assurance::Assurance;
 pub use audit::{AuditDecision, AuditEvent};
-pub use connection::{Capability, CapabilityOperation, CapabilityRef, Connection, ConnectionKind, RefreshState};
+pub use connection::{
+    Capability, CapabilityOperation, CapabilityRef, Connection, ConnectionKind, RefreshState,
+};
 pub use credential::{Credential, CredentialKind, PasskeyCredential};
 pub use grant::{Constraint, Grant, SpendPeriod};
 pub use ids::{ConnectionId, GrantId, OrgId, PrincipalId, RoleId};
 pub use org::Org;
 pub use permission::{
-    AdminAction, CalendarAction, CapabilityAction, ConnectionAction, MemoryAction, Permission, PermissionParseError,
-    PermissionSet, Sensitivity, SpendAction,
+    AdminAction, CalendarAction, CapabilityAction, ConnectionAction, MemoryAction, Permission,
+    PermissionParseError, PermissionSet, Sensitivity, SpendAction,
 };
 pub use principal::{Principal, PrincipalKind};
 pub use role::{Role, roles};

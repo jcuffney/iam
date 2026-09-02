@@ -7,7 +7,8 @@
 
 use async_trait::async_trait;
 use iam_core::{
-    AuditEvent, Credential, Org, OrgId, PasskeyCredential, Permission, PermissionSet, Principal, PrincipalId, Role, RoleId,
+    AuditEvent, Credential, Org, OrgId, PasskeyCredential, Permission, PermissionSet, Principal,
+    PrincipalId, Role, RoleId,
 };
 use time::OffsetDateTime;
 
@@ -28,7 +29,11 @@ pub trait IdentityStore: Send + Sync {
     async fn get_principal(&self, id: PrincipalId) -> StoreResult<Principal>;
     async fn get_principal_by_handle(&self, org_id: OrgId, handle: &str) -> StoreResult<Principal>;
     /// Set or clear the disabled timestamp. Clearing re-enables.
-    async fn set_principal_disabled(&self, id: PrincipalId, disabled_at: Option<OffsetDateTime>) -> StoreResult<()>;
+    async fn set_principal_disabled(
+        &self,
+        id: PrincipalId,
+        disabled_at: Option<OffsetDateTime>,
+    ) -> StoreResult<()>;
 
     // --- credentials ---
     /// Insert a credential idempotently. Returns `true` if newly inserted,
@@ -45,7 +50,11 @@ pub trait IdentityStore: Send + Sync {
     // --- roles ---
     async fn create_role(&self, role: &Role) -> StoreResult<()>;
     async fn get_role_by_name(&self, org_id: OrgId, name: &str) -> StoreResult<Role>;
-    async fn set_role_permissions(&self, role_id: RoleId, permissions: &[Permission]) -> StoreResult<()>;
+    async fn set_role_permissions(
+        &self,
+        role_id: RoleId,
+        permissions: &[Permission],
+    ) -> StoreResult<()>;
 
     // --- role assignments ---
     async fn assign_role(&self, principal_id: PrincipalId, role_id: RoleId) -> StoreResult<()>;
@@ -53,17 +62,33 @@ pub trait IdentityStore: Send + Sync {
     async fn roles_for_principal(&self, principal_id: PrincipalId) -> StoreResult<Vec<Role>>;
     /// The union of permissions across all of the principal's roles — the input
     /// to policy::authorize.
-    async fn permissions_for_principal(&self, principal_id: PrincipalId) -> StoreResult<PermissionSet>;
+    async fn permissions_for_principal(
+        &self,
+        principal_id: PrincipalId,
+    ) -> StoreResult<PermissionSet>;
 
     // --- one-time codes (recovery + registration) ---
-    async fn insert_codes(&self, principal_id: PrincipalId, purpose: CodePurpose, hashes: &[String]) -> StoreResult<()>;
+    async fn insert_codes(
+        &self,
+        principal_id: PrincipalId,
+        purpose: CodePurpose,
+        hashes: &[String],
+    ) -> StoreResult<()>;
     /// Unused codes for a principal+purpose; the caller argon2-verifies each.
-    async fn list_unused_codes(&self, principal_id: PrincipalId, purpose: CodePurpose) -> StoreResult<Vec<StoredCode>>;
+    async fn list_unused_codes(
+        &self,
+        principal_id: PrincipalId,
+        purpose: CodePurpose,
+    ) -> StoreResult<Vec<StoredCode>>;
     /// Atomically mark a code used. Returns `true` if this call consumed it,
     /// `false` if it was already used (lost the race).
     async fn mark_code_used(&self, code_id: uuid::Uuid) -> StoreResult<bool>;
     /// Delete all unused codes for a principal+purpose (used when reissuing).
-    async fn delete_unused_codes(&self, principal_id: PrincipalId, purpose: CodePurpose) -> StoreResult<()>;
+    async fn delete_unused_codes(
+        &self,
+        principal_id: PrincipalId,
+        purpose: CodePurpose,
+    ) -> StoreResult<()>;
 }
 
 /// Append-only audit trail. No update, no delete — by shape here and by trigger
@@ -81,7 +106,11 @@ pub trait ChallengeStore: Send + Sync {
     /// Consume a challenge: remove and return it, but only if it exists and has
     /// not expired. A second take of the same id returns `None`, which is what
     /// makes replay impossible.
-    async fn take_challenge(&self, challenge_id: &str, now: OffsetDateTime) -> StoreResult<Option<ChallengeRecord>>;
+    async fn take_challenge(
+        &self,
+        challenge_id: &str,
+        now: OffsetDateTime,
+    ) -> StoreResult<Option<ChallengeRecord>>;
 }
 
 /// Active sessions with TTL. The token layer defers to this for revocation.
@@ -89,6 +118,10 @@ pub trait ChallengeStore: Send + Sync {
 pub trait SessionStore: Send + Sync {
     async fn put_session(&self, record: &SessionRecord) -> StoreResult<()>;
     /// Fetch a session if it exists and has not expired.
-    async fn get_session(&self, session_id: &str, now: OffsetDateTime) -> StoreResult<Option<SessionRecord>>;
+    async fn get_session(
+        &self,
+        session_id: &str,
+        now: OffsetDateTime,
+    ) -> StoreResult<Option<SessionRecord>>;
     async fn revoke_session(&self, session_id: &str) -> StoreResult<()>;
 }

@@ -17,7 +17,13 @@ use time::OffsetDateTime;
 pub trait SpendLedger: Send + Sync {
     /// Amount spent in minor currency units for `principal` on `capability`
     /// within `period` as of `now`.
-    fn spent_minor(&self, principal: PrincipalId, capability: &CapabilityRef, period: SpendPeriod, now: OffsetDateTime) -> u64;
+    fn spent_minor(
+        &self,
+        principal: PrincipalId,
+        capability: &CapabilityRef,
+        period: SpendPeriod,
+        now: OffsetDateTime,
+    ) -> u64;
 }
 
 /// Reports how many times a principal has invoked a capability within a
@@ -25,7 +31,13 @@ pub trait SpendLedger: Send + Sync {
 pub trait InvocationLedger: Send + Sync {
     /// Invocations by `principal` on `capability` in the last `window_secs`
     /// seconds as of `now`.
-    fn invocations_in(&self, principal: PrincipalId, capability: &CapabilityRef, window_secs: u64, now: OffsetDateTime) -> u32;
+    fn invocations_in(
+        &self,
+        principal: PrincipalId,
+        capability: &CapabilityRef,
+        window_secs: u64,
+        now: OffsetDateTime,
+    ) -> u32;
 }
 
 type Key = (PrincipalId, CapabilityRef);
@@ -43,7 +55,13 @@ impl InMemorySpendLedger {
     }
 
     /// Record a spend. Callers do this after a metered invocation settles.
-    pub fn record(&self, principal: PrincipalId, capability: &CapabilityRef, amount_minor: u64, at: OffsetDateTime) {
+    pub fn record(
+        &self,
+        principal: PrincipalId,
+        capability: &CapabilityRef,
+        amount_minor: u64,
+        at: OffsetDateTime,
+    ) {
         self.entries
             .lock()
             .unwrap()
@@ -67,13 +85,24 @@ fn period_start(period: SpendPeriod, now: OffsetDateTime) -> OffsetDateTime {
 }
 
 impl SpendLedger for InMemorySpendLedger {
-    fn spent_minor(&self, principal: PrincipalId, capability: &CapabilityRef, period: SpendPeriod, now: OffsetDateTime) -> u64 {
+    fn spent_minor(
+        &self,
+        principal: PrincipalId,
+        capability: &CapabilityRef,
+        period: SpendPeriod,
+        now: OffsetDateTime,
+    ) -> u64 {
         let start = period_start(period, now);
         self.entries
             .lock()
             .unwrap()
             .get(&(principal, capability.clone()))
-            .map(|v| v.iter().filter(|(at, _)| *at >= start && *at <= now).map(|(_, amt)| *amt).sum())
+            .map(|v| {
+                v.iter()
+                    .filter(|(at, _)| *at >= start && *at <= now)
+                    .map(|(_, amt)| *amt)
+                    .sum()
+            })
             .unwrap_or(0)
     }
 }
@@ -100,7 +129,13 @@ impl InMemoryInvocationLedger {
 }
 
 impl InvocationLedger for InMemoryInvocationLedger {
-    fn invocations_in(&self, principal: PrincipalId, capability: &CapabilityRef, window_secs: u64, now: OffsetDateTime) -> u32 {
+    fn invocations_in(
+        &self,
+        principal: PrincipalId,
+        capability: &CapabilityRef,
+        window_secs: u64,
+        now: OffsetDateTime,
+    ) -> u32 {
         let cutoff = now - time::Duration::seconds(window_secs as i64);
         self.entries
             .lock()
@@ -116,7 +151,13 @@ impl InvocationLedger for InMemoryInvocationLedger {
 pub struct NullLedger;
 
 impl SpendLedger for NullLedger {
-    fn spent_minor(&self, _: PrincipalId, _: &CapabilityRef, _: SpendPeriod, _: OffsetDateTime) -> u64 {
+    fn spent_minor(
+        &self,
+        _: PrincipalId,
+        _: &CapabilityRef,
+        _: SpendPeriod,
+        _: OffsetDateTime,
+    ) -> u64 {
         0
     }
 }

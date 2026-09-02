@@ -41,7 +41,10 @@ impl RefreshProvider for LoggingRefreshProvider {
         tracing::info!(connection_id = %connection.id, provider = %connection.provider, "refresh (dev no-op)");
         // Push expiry out an hour so the connection stops appearing in the work
         // list; a real provider would return the provider-issued expiry.
-        Ok(RefreshOutcome { status: "dev_noop".into(), new_expires_at: Some(OffsetDateTime::now_utc() + time::Duration::hours(1)) })
+        Ok(RefreshOutcome {
+            status: "dev_noop".into(),
+            new_expires_at: Some(OffsetDateTime::now_utc() + time::Duration::hours(1)),
+        })
     }
 }
 
@@ -56,12 +59,19 @@ pub struct RefreshConfig {
 
 impl Default for RefreshConfig {
     fn default() -> Self {
-        Self { interval: Duration::from_secs(60), lead_secs: 300 }
+        Self {
+            interval: Duration::from_secs(60),
+            lead_secs: 300,
+        }
     }
 }
 
 /// Run the refresh loop until the process ends. Spawn with `tokio::spawn`.
-pub async fn run_refresh_loop(store: Arc<dyn ConnectionsStore>, provider: Arc<dyn RefreshProvider>, config: RefreshConfig) {
+pub async fn run_refresh_loop(
+    store: Arc<dyn ConnectionsStore>,
+    provider: Arc<dyn RefreshProvider>,
+    config: RefreshConfig,
+) {
     let mut ticker = tokio::time::interval(config.interval);
     loop {
         ticker.tick().await;
@@ -72,18 +82,31 @@ pub async fn run_refresh_loop(store: Arc<dyn ConnectionsStore>, provider: Arc<dy
 }
 
 /// One scan-and-refresh pass. Extracted so it can be unit-tested without a timer.
-pub async fn tick(store: &dyn ConnectionsStore, provider: &dyn RefreshProvider, lead_secs: i64) -> ConnectionsResult<usize> {
+pub async fn tick(
+    store: &dyn ConnectionsStore,
+    provider: &dyn RefreshProvider,
+    lead_secs: i64,
+) -> ConnectionsResult<usize> {
     let now = OffsetDateTime::now_utc();
     let due = store.list_refresh_due(now, lead_secs).await?;
     let count = due.len();
     for connection in due {
         match provider.refresh(&connection).await {
             Ok(outcome) => {
-                store.record_refresh(connection.id, &outcome.status, OffsetDateTime::now_utc(), outcome.new_expires_at).await?;
+                store
+                    .record_refresh(
+                        connection.id,
+                        &outcome.status,
+                        OffsetDateTime::now_utc(),
+                        outcome.new_expires_at,
+                    )
+                    .await?;
             }
             Err(e) => {
                 tracing::warn!(connection_id = %connection.id, error = %e, "refresh attempt failed");
-                store.record_refresh(connection.id, "error", OffsetDateTime::now_utc(), None).await?;
+                store
+                    .record_refresh(connection.id, "error", OffsetDateTime::now_utc(), None)
+                    .await?;
             }
         }
     }
@@ -112,7 +135,10 @@ mod tests {
             scopes_held: vec![],
             // Already expired → due now.
             expires_at: Some(OffsetDateTime::now_utc() - time::Duration::minutes(1)),
-            refresh: RefreshState::Refreshable { last_refreshed_at: None, status: None },
+            refresh: RefreshState::Refreshable {
+                last_refreshed_at: None,
+                status: None,
+            },
             created_at: OffsetDateTime::now_utc(),
             revoked_at: None,
         };

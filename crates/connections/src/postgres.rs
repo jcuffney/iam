@@ -5,8 +5,8 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 use iam_core::{
-    Capability, CapabilityOperation, CapabilityRef, Connection, ConnectionId, ConnectionKind, Constraint, Grant, GrantId,
-    PrincipalId, RefreshState,
+    Capability, CapabilityOperation, CapabilityRef, Connection, ConnectionId, ConnectionKind,
+    Constraint, Grant, GrantId, PrincipalId, RefreshState,
 };
 use sqlx::PgPool;
 
@@ -52,7 +52,10 @@ fn row_to_connection(
 ) -> ConnectionsResult<Connection> {
     let refresh = match (refresh_status.clone(), last_refreshed_at) {
         (None, None) => RefreshState::None,
-        (status, last) => RefreshState::Refreshable { last_refreshed_at: last, status },
+        (status, last) => RefreshState::Refreshable {
+            last_refreshed_at: last,
+            status,
+        },
     };
     Ok(Connection {
         id: ConnectionId(id),
@@ -128,12 +131,24 @@ impl ConnectionsStore for PgConnectionsStore {
         .await?
         .ok_or(ConnectionsError::NotFound)?;
         row_to_connection(
-            r.id, r.principal_id, r.org_id, r.provider, r.kind, r.scopes_held, r.refresh_status, r.last_refreshed_at,
-            r.expires_at, r.created_at, r.revoked_at,
+            r.id,
+            r.principal_id,
+            r.org_id,
+            r.provider,
+            r.kind,
+            r.scopes_held,
+            r.refresh_status,
+            r.last_refreshed_at,
+            r.expires_at,
+            r.created_at,
+            r.revoked_at,
         )
     }
 
-    async fn list_connections(&self, principal_id: PrincipalId) -> ConnectionsResult<Vec<Connection>> {
+    async fn list_connections(
+        &self,
+        principal_id: PrincipalId,
+    ) -> ConnectionsResult<Vec<Connection>> {
         let rows = sqlx::query!(
             "SELECT id, principal_id, org_id, provider, kind, scopes_held, refresh_status, last_refreshed_at, \
              expires_at, created_at, revoked_at FROM connections \
@@ -145,17 +160,34 @@ impl ConnectionsStore for PgConnectionsStore {
         rows.into_iter()
             .map(|r| {
                 row_to_connection(
-                    r.id, r.principal_id, r.org_id, r.provider, r.kind, r.scopes_held, r.refresh_status,
-                    r.last_refreshed_at, r.expires_at, r.created_at, r.revoked_at,
+                    r.id,
+                    r.principal_id,
+                    r.org_id,
+                    r.provider,
+                    r.kind,
+                    r.scopes_held,
+                    r.refresh_status,
+                    r.last_refreshed_at,
+                    r.expires_at,
+                    r.created_at,
+                    r.revoked_at,
                 )
             })
             .collect()
     }
 
-    async fn revoke_connection(&self, id: ConnectionId, at: time::OffsetDateTime) -> ConnectionsResult<()> {
-        let res = sqlx::query!("UPDATE connections SET revoked_at = $2 WHERE id = $1 AND revoked_at IS NULL", id.0, at)
-            .execute(&self.pool)
-            .await?;
+    async fn revoke_connection(
+        &self,
+        id: ConnectionId,
+        at: time::OffsetDateTime,
+    ) -> ConnectionsResult<()> {
+        let res = sqlx::query!(
+            "UPDATE connections SET revoked_at = $2 WHERE id = $1 AND revoked_at IS NULL",
+            id.0,
+            at
+        )
+        .execute(&self.pool)
+        .await?;
         if res.rows_affected() == 0 {
             return Err(ConnectionsError::NotFound);
         }
@@ -163,22 +195,35 @@ impl ConnectionsStore for PgConnectionsStore {
     }
 
     async fn reveal_secret(&self, id: ConnectionId) -> ConnectionsResult<Vec<u8>> {
-        let r = sqlx::query!("SELECT secret_ciphertext, secret_nonce FROM connections WHERE id = $1", id.0)
-            .fetch_optional(&self.pool)
-            .await?
-            .ok_or(ConnectionsError::NotFound)?;
-        self.key.open(&Sealed { ciphertext: r.secret_ciphertext, nonce: r.secret_nonce })
+        let r = sqlx::query!(
+            "SELECT secret_ciphertext, secret_nonce FROM connections WHERE id = $1",
+            id.0
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(ConnectionsError::NotFound)?;
+        self.key.open(&Sealed {
+            ciphertext: r.secret_ciphertext,
+            nonce: r.secret_nonce,
+        })
     }
 
-    async fn list_capabilities(&self, connection_id: ConnectionId) -> ConnectionsResult<Vec<Capability>> {
-        let rows = sqlx::query!("SELECT operation FROM capabilities WHERE connection_id = $1", connection_id.0)
-            .fetch_all(&self.pool)
-            .await?;
+    async fn list_capabilities(
+        &self,
+        connection_id: ConnectionId,
+    ) -> ConnectionsResult<Vec<Capability>> {
+        let rows = sqlx::query!(
+            "SELECT operation FROM capabilities WHERE connection_id = $1",
+            connection_id.0
+        )
+        .fetch_all(&self.pool)
+        .await?;
         rows.into_iter()
             .map(|r| {
                 Ok(Capability {
                     connection_id,
-                    operation: CapabilityOperation::from_str(&r.operation).map_err(integrity("capability operation"))?,
+                    operation: CapabilityOperation::from_str(&r.operation)
+                        .map_err(integrity("capability operation"))?,
                 })
             })
             .collect()
@@ -214,7 +259,14 @@ impl ConnectionsStore for PgConnectionsStore {
         .await?
         .ok_or(ConnectionsError::NotFound)?;
         grant_from_row(
-            r.id, r.principal_id, r.granted_by, r.connection_id, r.operation, r.constraints, r.expires_at, r.created_at,
+            r.id,
+            r.principal_id,
+            r.granted_by,
+            r.connection_id,
+            r.operation,
+            r.constraints,
+            r.expires_at,
+            r.created_at,
             r.revoked_at,
         )
     }
@@ -230,17 +282,28 @@ impl ConnectionsStore for PgConnectionsStore {
         rows.into_iter()
             .map(|r| {
                 grant_from_row(
-                    r.id, r.principal_id, r.granted_by, r.connection_id, r.operation, r.constraints, r.expires_at,
-                    r.created_at, r.revoked_at,
+                    r.id,
+                    r.principal_id,
+                    r.granted_by,
+                    r.connection_id,
+                    r.operation,
+                    r.constraints,
+                    r.expires_at,
+                    r.created_at,
+                    r.revoked_at,
                 )
             })
             .collect()
     }
 
     async fn revoke_grant(&self, id: GrantId, at: time::OffsetDateTime) -> ConnectionsResult<()> {
-        let res = sqlx::query!("UPDATE grants SET revoked_at = $2 WHERE id = $1 AND revoked_at IS NULL", id.0, at)
-            .execute(&self.pool)
-            .await?;
+        let res = sqlx::query!(
+            "UPDATE grants SET revoked_at = $2 WHERE id = $1 AND revoked_at IS NULL",
+            id.0,
+            at
+        )
+        .execute(&self.pool)
+        .await?;
         if res.rows_affected() == 0 {
             return Err(ConnectionsError::NotFound);
         }
@@ -271,13 +334,27 @@ impl ConnectionsStore for PgConnectionsStore {
 
         let Some(r) = r else { return Ok(None) };
         let grant = grant_from_row(
-            r.id, r.principal_id, r.granted_by, r.connection_id, r.operation, r.constraints, r.expires_at, r.created_at,
+            r.id,
+            r.principal_id,
+            r.granted_by,
+            r.connection_id,
+            r.operation,
+            r.constraints,
+            r.expires_at,
+            r.created_at,
             r.revoked_at,
         )?;
-        Ok(Some(GrantForAuthorization { grant, connection_active: r.connection_active.unwrap_or(false) }))
+        Ok(Some(GrantForAuthorization {
+            grant,
+            connection_active: r.connection_active.unwrap_or(false),
+        }))
     }
 
-    async fn list_refresh_due(&self, now: time::OffsetDateTime, within_secs: i64) -> ConnectionsResult<Vec<Connection>> {
+    async fn list_refresh_due(
+        &self,
+        now: time::OffsetDateTime,
+        within_secs: i64,
+    ) -> ConnectionsResult<Vec<Connection>> {
         let horizon = now + time::Duration::seconds(within_secs);
         let rows = sqlx::query!(
             "SELECT id, principal_id, org_id, provider, kind, scopes_held, refresh_status, last_refreshed_at, \
@@ -290,8 +367,17 @@ impl ConnectionsStore for PgConnectionsStore {
         rows.into_iter()
             .map(|r| {
                 row_to_connection(
-                    r.id, r.principal_id, r.org_id, r.provider, r.kind, r.scopes_held, r.refresh_status,
-                    r.last_refreshed_at, r.expires_at, r.created_at, r.revoked_at,
+                    r.id,
+                    r.principal_id,
+                    r.org_id,
+                    r.provider,
+                    r.kind,
+                    r.scopes_held,
+                    r.refresh_status,
+                    r.last_refreshed_at,
+                    r.expires_at,
+                    r.created_at,
+                    r.revoked_at,
                 )
             })
             .collect()
@@ -331,11 +417,15 @@ fn grant_from_row(
     revoked_at: Option<time::OffsetDateTime>,
 ) -> ConnectionsResult<Grant> {
     let constraints: Vec<Constraint> = serde_json::from_value(constraints)?;
-    let operation = CapabilityOperation::from_str(&operation).map_err(integrity("grant operation"))?;
+    let operation =
+        CapabilityOperation::from_str(&operation).map_err(integrity("grant operation"))?;
     Ok(Grant {
         id: GrantId(id),
         principal: PrincipalId(principal_id),
-        capability: CapabilityRef { connection_id: ConnectionId(connection_id), operation },
+        capability: CapabilityRef {
+            connection_id: ConnectionId(connection_id),
+            operation,
+        },
         constraints,
         expires_at,
         granted_by: PrincipalId(granted_by),

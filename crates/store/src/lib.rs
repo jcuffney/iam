@@ -17,14 +17,18 @@ pub use error::{StoreError, StoreResult};
 pub use memory::{MemoryAuditStore, MemoryChallengeStore, MemoryIdentityStore, MemorySessionStore};
 pub use postgres::PgStore;
 pub use records::{
-    AuditFilter, ChallengeMode, ChallengeRecord, CodePurpose, SessionRecord, SessionScope, StoredCode,
+    AuditFilter, ChallengeMode, ChallengeRecord, CodePurpose, SessionRecord, SessionScope,
+    StoredCode,
 };
 pub use traits::{AuditStore, ChallengeStore, IdentityStore, SessionStore};
 
 use sqlx::postgres::PgPoolOptions;
 
 /// Connect to Postgres and return a pool.
-pub async fn connect_postgres(database_url: &str, max_connections: u32) -> StoreResult<sqlx::PgPool> {
+pub async fn connect_postgres(
+    database_url: &str,
+    max_connections: u32,
+) -> StoreResult<sqlx::PgPool> {
     let pool = PgPoolOptions::new()
         .max_connections(max_connections)
         .connect(database_url)

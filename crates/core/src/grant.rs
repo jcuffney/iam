@@ -20,10 +20,7 @@ pub enum Constraint {
         per_seconds: u64,
     },
     /// Allowed wall-clock window, evaluated in UTC.
-    TimeWindow {
-        start: Time,
-        end: Time,
-    },
+    TimeWindow { start: Time, end: Time },
     /// Usage cost cap for metered capabilities (model endpoints). `limit_minor`
     /// is in minor currency units. This is the seam the wallet/escrow layer
     /// plugs into later; evaluation goes through the `SpendLedger` trait.

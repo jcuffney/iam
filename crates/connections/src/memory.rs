@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use iam_core::{Capability, CapabilityRef, Connection, ConnectionId, Grant, GrantId, PrincipalId, RefreshState};
+use iam_core::{
+    Capability, CapabilityRef, Connection, ConnectionId, Grant, GrantId, PrincipalId, RefreshState,
+};
 use time::OffsetDateTime;
 
 use crate::crypto::{EncryptionKey, Sealed};
@@ -35,7 +37,10 @@ pub struct MemoryConnectionsStore {
 
 impl MemoryConnectionsStore {
     pub fn new(key: EncryptionKey) -> Self {
-        Self { key, data: Mutex::new(Data::default()) }
+        Self {
+            key,
+            data: Mutex::new(Data::default()),
+        }
     }
 }
 
@@ -51,30 +56,53 @@ impl ConnectionsStore for MemoryConnectionsStore {
         let mut d = self.data.lock().unwrap();
         d.connections.insert(
             new.connection.id,
-            ConnRow { connection: new.connection.clone(), secret, refresh, capabilities: new.capabilities.to_vec() },
+            ConnRow {
+                connection: new.connection.clone(),
+                secret,
+                refresh,
+                capabilities: new.capabilities.to_vec(),
+            },
         );
         Ok(())
     }
 
     async fn get_connection(&self, id: ConnectionId) -> ConnectionsResult<Connection> {
-        self.data.lock().unwrap().connections.get(&id).map(|r| r.connection.clone()).ok_or(ConnectionsError::NotFound)
+        self.data
+            .lock()
+            .unwrap()
+            .connections
+            .get(&id)
+            .map(|r| r.connection.clone())
+            .ok_or(ConnectionsError::NotFound)
     }
 
-    async fn list_connections(&self, principal_id: PrincipalId) -> ConnectionsResult<Vec<Connection>> {
+    async fn list_connections(
+        &self,
+        principal_id: PrincipalId,
+    ) -> ConnectionsResult<Vec<Connection>> {
         Ok(self
             .data
             .lock()
             .unwrap()
             .connections
             .values()
-            .filter(|r| r.connection.principal_id == principal_id && r.connection.revoked_at.is_none())
+            .filter(|r| {
+                r.connection.principal_id == principal_id && r.connection.revoked_at.is_none()
+            })
             .map(|r| r.connection.clone())
             .collect())
     }
 
-    async fn revoke_connection(&self, id: ConnectionId, at: OffsetDateTime) -> ConnectionsResult<()> {
+    async fn revoke_connection(
+        &self,
+        id: ConnectionId,
+        at: OffsetDateTime,
+    ) -> ConnectionsResult<()> {
         let mut d = self.data.lock().unwrap();
-        let row = d.connections.get_mut(&id).ok_or(ConnectionsError::NotFound)?;
+        let row = d
+            .connections
+            .get_mut(&id)
+            .ok_or(ConnectionsError::NotFound)?;
         row.connection.revoked_at = Some(at);
         Ok(())
     }
@@ -85,9 +113,15 @@ impl ConnectionsStore for MemoryConnectionsStore {
         self.key.open(&row.secret)
     }
 
-    async fn list_capabilities(&self, connection_id: ConnectionId) -> ConnectionsResult<Vec<Capability>> {
+    async fn list_capabilities(
+        &self,
+        connection_id: ConnectionId,
+    ) -> ConnectionsResult<Vec<Capability>> {
         let d = self.data.lock().unwrap();
-        let row = d.connections.get(&connection_id).ok_or(ConnectionsError::NotFound)?;
+        let row = d
+            .connections
+            .get(&connection_id)
+            .ok_or(ConnectionsError::NotFound)?;
         Ok(row.capabilities.clone())
     }
 
@@ -101,7 +135,13 @@ impl ConnectionsStore for MemoryConnectionsStore {
     }
 
     async fn get_grant(&self, id: GrantId) -> ConnectionsResult<Grant> {
-        self.data.lock().unwrap().grants.get(&id).cloned().ok_or(ConnectionsError::NotFound)
+        self.data
+            .lock()
+            .unwrap()
+            .grants
+            .get(&id)
+            .cloned()
+            .ok_or(ConnectionsError::NotFound)
     }
 
     async fn list_grants(&self, principal_id: PrincipalId) -> ConnectionsResult<Vec<Grant>> {
@@ -132,7 +172,9 @@ impl ConnectionsStore for MemoryConnectionsStore {
         let grant = d
             .grants
             .values()
-            .find(|g| g.principal == principal_id && g.revoked_at.is_none() && &g.capability == capability)
+            .find(|g| {
+                g.principal == principal_id && g.revoked_at.is_none() && &g.capability == capability
+            })
             .cloned();
 
         let Some(grant) = grant else { return Ok(None) };
@@ -142,10 +184,17 @@ impl ConnectionsStore for MemoryConnectionsStore {
             .get(&capability.connection_id)
             .map(|r| r.connection.revoked_at.is_none())
             .unwrap_or(false);
-        Ok(Some(GrantForAuthorization { grant, connection_active }))
+        Ok(Some(GrantForAuthorization {
+            grant,
+            connection_active,
+        }))
     }
 
-    async fn list_refresh_due(&self, now: OffsetDateTime, within_secs: i64) -> ConnectionsResult<Vec<Connection>> {
+    async fn list_refresh_due(
+        &self,
+        now: OffsetDateTime,
+        within_secs: i64,
+    ) -> ConnectionsResult<Vec<Connection>> {
         let horizon = now + time::Duration::seconds(within_secs);
         Ok(self
             .data
@@ -168,8 +217,14 @@ impl ConnectionsStore for MemoryConnectionsStore {
         new_expires_at: Option<OffsetDateTime>,
     ) -> ConnectionsResult<()> {
         let mut d = self.data.lock().unwrap();
-        let row = d.connections.get_mut(&id).ok_or(ConnectionsError::NotFound)?;
-        row.connection.refresh = RefreshState::Refreshable { last_refreshed_at: Some(at), status: Some(status.to_string()) };
+        let row = d
+            .connections
+            .get_mut(&id)
+            .ok_or(ConnectionsError::NotFound)?;
+        row.connection.refresh = RefreshState::Refreshable {
+            last_refreshed_at: Some(at),
+            status: Some(status.to_string()),
+        };
         if let Some(exp) = new_expires_at {
             row.connection.expires_at = Some(exp);
         }
@@ -208,13 +263,18 @@ mod tests {
         let conn = a_connection(principal);
         let cap = CapabilityRef {
             connection_id: conn.id,
-            operation: CapabilityOperation::McpTool { name: "fs.read".into() },
+            operation: CapabilityOperation::McpTool {
+                name: "fs.read".into(),
+            },
         };
         s.create_connection(NewConnection {
             connection: &conn,
             secret: b"tok",
             refresh: None,
-            capabilities: &[Capability { connection_id: conn.id, operation: cap.operation.clone() }],
+            capabilities: &[Capability {
+                connection_id: conn.id,
+                operation: cap.operation.clone(),
+            }],
         })
         .await
         .unwrap();
@@ -232,13 +292,23 @@ mod tests {
         s.create_grant(&grant).await.unwrap();
 
         // Before revocation: found and connection active.
-        let found = s.find_grant_for_authorization(principal, &cap).await.unwrap().unwrap();
+        let found = s
+            .find_grant_for_authorization(principal, &cap)
+            .await
+            .unwrap()
+            .unwrap();
         assert!(found.connection_active);
 
         // After revoking the connection: grant still found, but connection
         // reported inactive — policy will deny with ConnectionInactive.
-        s.revoke_connection(conn.id, OffsetDateTime::now_utc()).await.unwrap();
-        let found = s.find_grant_for_authorization(principal, &cap).await.unwrap().unwrap();
+        s.revoke_connection(conn.id, OffsetDateTime::now_utc())
+            .await
+            .unwrap();
+        let found = s
+            .find_grant_for_authorization(principal, &cap)
+            .await
+            .unwrap()
+            .unwrap();
         assert!(!found.connection_active);
     }
 
@@ -247,12 +317,18 @@ mod tests {
         let s = store();
         let principal = PrincipalId::new();
         let conn = a_connection(principal);
-        let cap = CapabilityRef { connection_id: conn.id, operation: CapabilityOperation::Opaque };
+        let cap = CapabilityRef {
+            connection_id: conn.id,
+            operation: CapabilityOperation::Opaque,
+        };
         s.create_connection(NewConnection {
             connection: &conn,
             secret: b"tok",
             refresh: None,
-            capabilities: &[Capability { connection_id: conn.id, operation: CapabilityOperation::Opaque }],
+            capabilities: &[Capability {
+                connection_id: conn.id,
+                operation: CapabilityOperation::Opaque,
+            }],
         })
         .await
         .unwrap();
@@ -267,7 +343,14 @@ mod tests {
             revoked_at: None,
         };
         s.create_grant(&grant).await.unwrap();
-        s.revoke_grant(grant.id, OffsetDateTime::now_utc()).await.unwrap();
-        assert!(s.find_grant_for_authorization(principal, &cap).await.unwrap().is_none());
+        s.revoke_grant(grant.id, OffsetDateTime::now_utc())
+            .await
+            .unwrap();
+        assert!(
+            s.find_grant_for_authorization(principal, &cap)
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 }

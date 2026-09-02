@@ -38,17 +38,26 @@ pub async fn build(config: &Config, metrics: Option<PrometheusHandle>) -> anyhow
     let conn_pool = iam_connections::connect(&config.connections_database_url, 5).await?;
     iam_connections::run_migrations(&conn_pool).await?;
     let enc_key = EncryptionKey::from_base64(&config.connections_enc_key)?;
-    let connections: Arc<dyn ConnectionsStore> = Arc::new(PgConnectionsStore::new(conn_pool, enc_key));
+    let connections: Arc<dyn ConnectionsStore> =
+        Arc::new(PgConnectionsStore::new(conn_pool, enc_key));
 
     // Ephemeral state (DynamoDB): challenges + sessions.
     let dynamo_client = iam_store::connect_dynamo(config.dynamo_endpoint.as_deref()).await;
     let dynamo = Arc::new(DynamoStore::new(dynamo_client));
     dynamo.ensure_tables().await?;
 
-    let webauthn = Arc::new(WebauthnService::new(&config.rp_id, &config.rp_origin, &config.rp_name)?);
+    let webauthn = Arc::new(WebauthnService::new(
+        &config.rp_id,
+        &config.rp_origin,
+        &config.rp_name,
+    )?);
 
     let key_source = EnvKeySource::from_json(&config.signing_keys_json)?;
-    let keyring = Arc::new(KeyRing::load(&key_source, config.issuer.clone(), config.audience.clone())?);
+    let keyring = Arc::new(KeyRing::load(
+        &key_source,
+        config.issuer.clone(),
+        config.audience.clone(),
+    )?);
 
     let limiters = Arc::new(RateLimiters::new(RATE_PER_MINUTE));
 
@@ -68,5 +77,9 @@ pub async fn build(config: &Config, metrics: Option<PrometheusHandle>) -> anyhow
         metrics,
     });
 
-    Ok(Built { state, connections, limiters })
+    Ok(Built {
+        state,
+        connections,
+        limiters,
+    })
 }

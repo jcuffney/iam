@@ -75,7 +75,10 @@ pub async fn start(
         })
         .await?;
 
-    Ok(Json(AuthStartResponse { challenge_id, public_key: rcr }))
+    Ok(Json(AuthStartResponse {
+        challenge_id,
+        public_key: rcr,
+    }))
 }
 
 #[derive(Deserialize)]
@@ -113,11 +116,18 @@ pub async fn finish(
     // Identify the stored credential the assertion used and confirm ownership.
     let Credential::Passkey(stored) = state.identity().get_credential(&raw_id).await?;
     if stored.principal_id != challenge.principal_id {
-        return Err(ApiError::Unauthorized("credential does not belong to this principal".into()));
+        return Err(ApiError::Unauthorized(
+            "credential does not belong to this principal".into(),
+        ));
     }
 
     // Verify — a counter regression surfaces here as a possible clone.
-    let verified = match state.webauthn().finish_authentication(&req.credential, &challenge.state_blob, &stored, now) {
+    let verified = match state.webauthn().finish_authentication(
+        &req.credential,
+        &challenge.state_blob,
+        &stored,
+        now,
+    ) {
         Ok(v) => v,
         Err(iam_auth::AuthError::CounterRegression) => {
             metrics::counter_regression();
@@ -156,7 +166,10 @@ pub async fn finish(
         created_at: stored.created_at,
         last_used_at: Some(verified.verified_at),
     };
-    state.identity().update_credential_after_auth(&updated).await?;
+    state
+        .identity()
+        .update_credential_after_auth(&updated)
+        .await?;
 
     // Establish a session (the revocable authority) and mint a short token.
     let session_id = Uuid::new_v4().to_string();
@@ -219,7 +232,10 @@ pub struct RefreshRequest {
 /// POST /auth/refresh — exchange a still-signed token (expiry ignored) for a
 /// fresh one, provided its session is still live. The token never outlives the
 /// session.
-pub async fn refresh(State(state): State<AppState>, Json(req): Json<RefreshRequest>) -> ApiResult<Json<TokenResponse>> {
+pub async fn refresh(
+    State(state): State<AppState>,
+    Json(req): Json<RefreshRequest>,
+) -> ApiResult<Json<TokenResponse>> {
     let claims = state
         .keyring()
         .verify(&req.token, false)
@@ -232,7 +248,10 @@ pub async fn refresh(State(state): State<AppState>, Json(req): Json<RefreshReque
         .await?
         .ok_or_else(|| ApiError::Unauthorized("session expired or revoked".into()))?;
 
-    let principal_id: PrincipalId = claims.sub.parse().map_err(|_| ApiError::Unauthorized("malformed subject".into()))?;
+    let principal_id: PrincipalId = claims
+        .sub
+        .parse()
+        .map_err(|_| ApiError::Unauthorized("malformed subject".into()))?;
     let principal = state.identity().get_principal(principal_id).await?;
     if principal.is_disabled() {
         return Err(ApiError::Unauthorized("principal is disabled".into()));
@@ -252,12 +271,23 @@ pub async fn refresh(State(state): State<AppState>, Json(req): Json<RefreshReque
         )
         .map_err(|e| ApiError::Internal(e.into()))?;
 
-    Ok(Json(TokenResponse { token, principal_id, expires_at: token_expires, assurance: session.assurance }))
+    Ok(Json(TokenResponse {
+        token,
+        principal_id,
+        expires_at: token_expires,
+        assurance: session.assurance,
+    }))
 }
 
 /// POST /auth/logout — revoke the current session.
-pub async fn logout(State(state): State<AppState>, auth: Authenticated) -> ApiResult<Json<serde_json::Value>> {
-    state.sessions().revoke_session(&auth.session.session_id).await?;
+pub async fn logout(
+    State(state): State<AppState>,
+    auth: Authenticated,
+) -> ApiResult<Json<serde_json::Value>> {
+    state
+        .sessions()
+        .revoke_session(&auth.session.session_id)
+        .await?;
     audit::record(
         &state,
         AuditEntry {
@@ -277,7 +307,10 @@ pub async fn logout(State(state): State<AppState>, auth: Authenticated) -> ApiRe
 
 // --- helpers ---
 
-async fn passkeys_for(state: &AppState, principal_id: PrincipalId) -> ApiResult<Vec<PasskeyCredential>> {
+async fn passkeys_for(
+    state: &AppState,
+    principal_id: PrincipalId,
+) -> ApiResult<Vec<PasskeyCredential>> {
     Ok(state
         .identity()
         .list_credentials(principal_id)

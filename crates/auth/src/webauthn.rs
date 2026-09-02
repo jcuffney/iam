@@ -11,8 +11,9 @@ use iam_core::PasskeyCredential;
 use time::OffsetDateTime;
 use uuid::Uuid;
 use webauthn_rs::prelude::{
-    CreationChallengeResponse, CredentialID, Passkey, PasskeyAuthentication, PasskeyRegistration, PublicKeyCredential,
-    RegisterPublicKeyCredential, RequestChallengeResponse, Url, Webauthn, WebauthnBuilder,
+    CreationChallengeResponse, CredentialID, Passkey, PasskeyAuthentication, PasskeyRegistration,
+    PublicKeyCredential, RegisterPublicKeyCredential, RequestChallengeResponse, Url, Webauthn,
+    WebauthnBuilder,
 };
 
 use crate::error::AuthError;
@@ -45,7 +46,8 @@ pub struct VerifiedAssertion {
 
 impl WebauthnService {
     pub fn new(rp_id: &str, rp_origin: &str, rp_name: &str) -> Result<Self, AuthError> {
-        let origin = Url::parse(rp_origin).map_err(|e| AuthError::Config(format!("invalid rp origin: {e}")))?;
+        let origin = Url::parse(rp_origin)
+            .map_err(|e| AuthError::Config(format!("invalid rp origin: {e}")))?;
         let inner = WebauthnBuilder::new(rp_id, &origin)
             .map_err(AuthError::Webauthn)?
             .rp_name(rp_name)
@@ -66,8 +68,16 @@ impl WebauthnService {
         display_name: &str,
         existing_credential_ids: &[Vec<u8>],
     ) -> Result<(CreationChallengeResponse, Vec<u8>), AuthError> {
-        let exclude: Vec<CredentialID> = existing_credential_ids.iter().cloned().map(CredentialID::from).collect();
-        let exclude = if exclude.is_empty() { None } else { Some(exclude) };
+        let exclude: Vec<CredentialID> = existing_credential_ids
+            .iter()
+            .cloned()
+            .map(CredentialID::from)
+            .collect();
+        let exclude = if exclude.is_empty() {
+            None
+        } else {
+            Some(exclude)
+        };
 
         let (ccr, state) = self
             .inner
@@ -88,20 +98,32 @@ impl WebauthnService {
         nickname: Option<String>,
     ) -> Result<RegisteredCredential, AuthError> {
         let state: PasskeyRegistration = serde_json::from_slice(state_blob)?;
-        let passkey = self.inner.finish_passkey_registration(registration, &state).map_err(AuthError::Webauthn)?;
+        let passkey = self
+            .inner
+            .finish_passkey_registration(registration, &state)
+            .map_err(AuthError::Webauthn)?;
         let credential = passkey_to_core(principal_id, &passkey, nickname)?;
         let credential_id = credential.credential_id.clone();
-        Ok(RegisteredCredential { credential, credential_id })
+        Ok(RegisteredCredential {
+            credential,
+            credential_id,
+        })
     }
 
     /// Begin authentication against a principal's registered passkeys.
-    pub fn start_authentication(&self, credentials: &[PasskeyCredential]) -> Result<(RequestChallengeResponse, Vec<u8>), AuthError> {
+    pub fn start_authentication(
+        &self,
+        credentials: &[PasskeyCredential],
+    ) -> Result<(RequestChallengeResponse, Vec<u8>), AuthError> {
         let passkeys: Vec<Passkey> = credentials
             .iter()
             .map(|c| serde_json::from_slice::<Passkey>(&c.passkey_blob).map_err(AuthError::from))
             .collect::<Result<_, _>>()?;
 
-        let (rcr, state) = self.inner.start_passkey_authentication(&passkeys).map_err(AuthError::Webauthn)?;
+        let (rcr, state) = self
+            .inner
+            .start_passkey_authentication(&passkeys)
+            .map_err(AuthError::Webauthn)?;
         let state_blob = serde_json::to_vec(&state)?;
         Ok((rcr, state_blob))
     }

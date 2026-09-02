@@ -4,8 +4,8 @@
 //! service's connections encryption key. The key is distinct from anything the
 //! identity store holds — that separation is the entire point of this crate.
 
-use aes_gcm::aead::{Aead, KeyInit, Nonce};
 use aes_gcm::Aes256Gcm;
+use aes_gcm::aead::{Aead, KeyInit, Nonce};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 
@@ -28,15 +28,21 @@ impl EncryptionKey {
     /// Build from raw 32 key bytes.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ConnectionsError> {
         if bytes.len() != 32 {
-            return Err(ConnectionsError::InvalidKey(format!("expected 32 bytes, got {}", bytes.len())));
+            return Err(ConnectionsError::InvalidKey(format!(
+                "expected 32 bytes, got {}",
+                bytes.len()
+            )));
         }
-        let cipher = Aes256Gcm::new_from_slice(bytes).map_err(|e| ConnectionsError::InvalidKey(e.to_string()))?;
+        let cipher = Aes256Gcm::new_from_slice(bytes)
+            .map_err(|e| ConnectionsError::InvalidKey(e.to_string()))?;
         Ok(Self { cipher })
     }
 
     /// Build from a base64-encoded 32-byte key (env / Secrets Manager form).
     pub fn from_base64(b64: &str) -> Result<Self, ConnectionsError> {
-        let bytes = B64.decode(b64.trim()).map_err(|e| ConnectionsError::InvalidKey(e.to_string()))?;
+        let bytes = B64
+            .decode(b64.trim())
+            .map_err(|e| ConnectionsError::InvalidKey(e.to_string()))?;
         Self::from_bytes(&bytes)
     }
 
@@ -45,15 +51,27 @@ impl EncryptionKey {
         let mut nonce_bytes = [0u8; 12];
         getrandom::fill(&mut nonce_bytes).map_err(|_| ConnectionsError::Encryption)?;
         let nonce = Nonce::<Aes256Gcm>::from(nonce_bytes);
-        let ciphertext = self.cipher.encrypt(&nonce, plaintext).map_err(|_| ConnectionsError::Encryption)?;
-        Ok(Sealed { ciphertext, nonce: nonce_bytes.to_vec() })
+        let ciphertext = self
+            .cipher
+            .encrypt(&nonce, plaintext)
+            .map_err(|_| ConnectionsError::Encryption)?;
+        Ok(Sealed {
+            ciphertext,
+            nonce: nonce_bytes.to_vec(),
+        })
     }
 
     /// Open a sealed secret.
     pub fn open(&self, sealed: &Sealed) -> Result<Vec<u8>, ConnectionsError> {
-        let nonce_bytes: [u8; 12] = sealed.nonce.as_slice().try_into().map_err(|_| ConnectionsError::Encryption)?;
+        let nonce_bytes: [u8; 12] = sealed
+            .nonce
+            .as_slice()
+            .try_into()
+            .map_err(|_| ConnectionsError::Encryption)?;
         let nonce = Nonce::<Aes256Gcm>::from(nonce_bytes);
-        self.cipher.decrypt(&nonce, sealed.ciphertext.as_ref()).map_err(|_| ConnectionsError::Encryption)
+        self.cipher
+            .decrypt(&nonce, sealed.ciphertext.as_ref())
+            .map_err(|_| ConnectionsError::Encryption)
     }
 }
 

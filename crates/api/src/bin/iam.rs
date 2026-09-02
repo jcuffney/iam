@@ -25,10 +25,18 @@ async fn main() -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to install metrics recorder: {e}"))?;
     iam_api::metrics::describe();
 
-    let Built { state, connections, limiters } = runtime::build(&config, Some(prometheus)).await?;
+    let Built {
+        state,
+        connections,
+        limiters,
+    } = runtime::build(&config, Some(prometheus)).await?;
 
     // Background: refresh loop (separable, no handler deps) and rate-limiter GC.
-    tokio::spawn(run_refresh_loop(connections, Arc::new(LoggingRefreshProvider), RefreshConfig::default()));
+    tokio::spawn(run_refresh_loop(
+        connections,
+        Arc::new(LoggingRefreshProvider),
+        RefreshConfig::default(),
+    ));
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(Duration::from_secs(60));
         loop {
@@ -49,7 +57,11 @@ async fn serve(app: axum::Router, addr: &str) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!(%addr, "iam listening");
     // ConnectInfo so the client IP is available to rate limiting and audit.
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }
 
@@ -57,12 +69,15 @@ async fn serve(app: axum::Router, addr: &str) -> anyhow::Result<()> {
 async fn serve(app: axum::Router, _addr: &str) -> anyhow::Result<()> {
     // Behind API Gateway there is no listener; the router is driven directly.
     // Client IP comes from X-Forwarded-For (see ip::client_ip).
-    lambda_http::run(app).await.map_err(|e| anyhow::anyhow!("lambda runtime error: {e}"))?;
+    lambda_http::run(app)
+        .await
+        .map_err(|e| anyhow::anyhow!("lambda runtime error: {e}"))?;
     Ok(())
 }
 
 fn init_tracing() {
     use tracing_subscriber::{EnvFilter, fmt};
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,iam_api=debug"));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,iam_api=debug"));
     fmt().with_env_filter(filter).init();
 }

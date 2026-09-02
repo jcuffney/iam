@@ -61,7 +61,9 @@ impl IntoResponse for ApiError {
         if let ApiError::RateLimited { retry_after_secs } = self
             && let Ok(value) = retry_after_secs.to_string().parse()
         {
-            response.headers_mut().insert(axum::http::header::RETRY_AFTER, value);
+            response
+                .headers_mut()
+                .insert(axum::http::header::RETRY_AFTER, value);
         }
         response
     }

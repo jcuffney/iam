@@ -8,8 +8,9 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 use iam_core::{
-    AuditDecision, AuditEvent, Assurance, Credential, CredentialKind, Org, OrgId, PasskeyCredential, Permission, PermissionSet,
-    Principal, PrincipalId, PrincipalKind, Role, RoleId,
+    Assurance, AuditDecision, AuditEvent, Credential, CredentialKind, Org, OrgId,
+    PasskeyCredential, Permission, PermissionSet, Principal, PrincipalId, PrincipalKind, Role,
+    RoleId,
 };
 use sqlx::PgPool;
 
@@ -55,19 +56,35 @@ impl IdentityStore for PgStore {
     }
 
     async fn get_org(&self, id: OrgId) -> StoreResult<Org> {
-        let row = sqlx::query!("SELECT id, slug, name, created_at FROM orgs WHERE id = $1", id.0)
-            .fetch_optional(&self.pool)
-            .await?
-            .ok_or(StoreError::NotFound)?;
-        Ok(Org { id: row.id.into(), slug: row.slug, name: row.name, created_at: row.created_at })
+        let row = sqlx::query!(
+            "SELECT id, slug, name, created_at FROM orgs WHERE id = $1",
+            id.0
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(StoreError::NotFound)?;
+        Ok(Org {
+            id: row.id.into(),
+            slug: row.slug,
+            name: row.name,
+            created_at: row.created_at,
+        })
     }
 
     async fn get_org_by_slug(&self, slug: &str) -> StoreResult<Org> {
-        let row = sqlx::query!("SELECT id, slug, name, created_at FROM orgs WHERE slug = $1", slug)
-            .fetch_optional(&self.pool)
-            .await?
-            .ok_or(StoreError::NotFound)?;
-        Ok(Org { id: row.id.into(), slug: row.slug, name: row.name, created_at: row.created_at })
+        let row = sqlx::query!(
+            "SELECT id, slug, name, created_at FROM orgs WHERE slug = $1",
+            slug
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(StoreError::NotFound)?;
+        Ok(Org {
+            id: row.id.into(),
+            slug: row.slug,
+            name: row.name,
+            created_at: row.created_at,
+        })
     }
 
     async fn create_principal(&self, principal: &Principal) -> StoreResult<()> {
@@ -128,10 +145,18 @@ impl IdentityStore for PgStore {
         })
     }
 
-    async fn set_principal_disabled(&self, id: PrincipalId, disabled_at: Option<time::OffsetDateTime>) -> StoreResult<()> {
-        let res = sqlx::query!("UPDATE principals SET disabled_at = $2 WHERE id = $1", id.0, disabled_at)
-            .execute(&self.pool)
-            .await?;
+    async fn set_principal_disabled(
+        &self,
+        id: PrincipalId,
+        disabled_at: Option<time::OffsetDateTime>,
+    ) -> StoreResult<()> {
+        let res = sqlx::query!(
+            "UPDATE principals SET disabled_at = $2 WHERE id = $1",
+            id.0,
+            disabled_at
+        )
+        .execute(&self.pool)
+        .await?;
         if res.rows_affected() == 0 {
             return Err(StoreError::NotFound);
         }
@@ -166,13 +191,18 @@ impl IdentityStore for PgStore {
 
         // Row already existed: idempotent for the same principal, conflict for
         // a different one.
-        let existing = sqlx::query!("SELECT principal_id FROM credentials WHERE credential_id = $1", pk.credential_id)
-            .fetch_one(&self.pool)
-            .await?;
+        let existing = sqlx::query!(
+            "SELECT principal_id FROM credentials WHERE credential_id = $1",
+            pk.credential_id
+        )
+        .fetch_one(&self.pool)
+        .await?;
         if existing.principal_id == pk.principal_id.0 {
             Ok(false)
         } else {
-            Err(StoreError::Conflict("credential id belongs to another principal".into()))
+            Err(StoreError::Conflict(
+                "credential id belongs to another principal".into(),
+            ))
         }
     }
 
@@ -242,9 +272,12 @@ impl IdentityStore for PgStore {
     }
 
     async fn delete_credential(&self, credential_id: &[u8]) -> StoreResult<()> {
-        let res = sqlx::query!("DELETE FROM credentials WHERE credential_id = $1", credential_id)
-            .execute(&self.pool)
-            .await?;
+        let res = sqlx::query!(
+            "DELETE FROM credentials WHERE credential_id = $1",
+            credential_id
+        )
+        .execute(&self.pool)
+        .await?;
         if res.rows_affected() == 0 {
             return Err(StoreError::NotFound);
         }
@@ -252,22 +285,39 @@ impl IdentityStore for PgStore {
     }
 
     async fn create_role(&self, role: &Role) -> StoreResult<()> {
-        sqlx::query!("INSERT INTO roles (id, org_id, name) VALUES ($1, $2, $3)", role.id.0, role.org_id.0, role.name)
-            .execute(&self.pool)
-            .await
-            .map_err(conflict_or_db)?;
+        sqlx::query!(
+            "INSERT INTO roles (id, org_id, name) VALUES ($1, $2, $3)",
+            role.id.0,
+            role.org_id.0,
+            role.name
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(conflict_or_db)?;
         Ok(())
     }
 
     async fn get_role_by_name(&self, org_id: OrgId, name: &str) -> StoreResult<Role> {
-        let row = sqlx::query!("SELECT id, org_id, name FROM roles WHERE org_id = $1 AND name = $2", org_id.0, name)
-            .fetch_optional(&self.pool)
-            .await?
-            .ok_or(StoreError::NotFound)?;
-        Ok(Role { id: row.id.into(), org_id: row.org_id.into(), name: row.name })
+        let row = sqlx::query!(
+            "SELECT id, org_id, name FROM roles WHERE org_id = $1 AND name = $2",
+            org_id.0,
+            name
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(StoreError::NotFound)?;
+        Ok(Role {
+            id: row.id.into(),
+            org_id: row.org_id.into(),
+            name: row.name,
+        })
     }
 
-    async fn set_role_permissions(&self, role_id: RoleId, permissions: &[Permission]) -> StoreResult<()> {
+    async fn set_role_permissions(
+        &self,
+        role_id: RoleId,
+        permissions: &[Permission],
+    ) -> StoreResult<()> {
         let mut tx = self.pool.begin().await?;
         sqlx::query!("DELETE FROM role_permissions WHERE role_id = $1", role_id.0)
             .execute(&mut *tx)
@@ -288,10 +338,13 @@ impl IdentityStore for PgStore {
     async fn assign_role(&self, principal_id: PrincipalId, role_id: RoleId) -> StoreResult<()> {
         // Derive org_id from the principal so the composite FK is satisfied and
         // cross-org assignment is impossible.
-        let org = sqlx::query!("SELECT org_id FROM principals WHERE id = $1", principal_id.0)
-            .fetch_optional(&self.pool)
-            .await?
-            .ok_or(StoreError::NotFound)?;
+        let org = sqlx::query!(
+            "SELECT org_id FROM principals WHERE id = $1",
+            principal_id.0
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(StoreError::NotFound)?;
         sqlx::query!(
             "INSERT INTO principal_roles (org_id, principal_id, role_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
             org.org_id,
@@ -305,9 +358,13 @@ impl IdentityStore for PgStore {
     }
 
     async fn revoke_role(&self, principal_id: PrincipalId, role_id: RoleId) -> StoreResult<()> {
-        sqlx::query!("DELETE FROM principal_roles WHERE principal_id = $1 AND role_id = $2", principal_id.0, role_id.0)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query!(
+            "DELETE FROM principal_roles WHERE principal_id = $1 AND role_id = $2",
+            principal_id.0,
+            role_id.0
+        )
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
@@ -320,10 +377,20 @@ impl IdentityStore for PgStore {
         )
         .fetch_all(&self.pool)
         .await?;
-        Ok(rows.into_iter().map(|row| Role { id: row.id.into(), org_id: row.org_id.into(), name: row.name }).collect())
+        Ok(rows
+            .into_iter()
+            .map(|row| Role {
+                id: row.id.into(),
+                org_id: row.org_id.into(),
+                name: row.name,
+            })
+            .collect())
     }
 
-    async fn permissions_for_principal(&self, principal_id: PrincipalId) -> StoreResult<PermissionSet> {
+    async fn permissions_for_principal(
+        &self,
+        principal_id: PrincipalId,
+    ) -> StoreResult<PermissionSet> {
         let rows = sqlx::query!(
             "SELECT DISTINCT rp.permission FROM principal_roles pr \
              JOIN role_permissions rp ON rp.role_id = pr.role_id \
@@ -339,7 +406,12 @@ impl IdentityStore for PgStore {
         Ok(perms)
     }
 
-    async fn insert_codes(&self, principal_id: PrincipalId, purpose: CodePurpose, hashes: &[String]) -> StoreResult<()> {
+    async fn insert_codes(
+        &self,
+        principal_id: PrincipalId,
+        purpose: CodePurpose,
+        hashes: &[String],
+    ) -> StoreResult<()> {
         let mut tx = self.pool.begin().await?;
         for hash in hashes {
             sqlx::query!(
@@ -355,7 +427,11 @@ impl IdentityStore for PgStore {
         Ok(())
     }
 
-    async fn list_unused_codes(&self, principal_id: PrincipalId, purpose: CodePurpose) -> StoreResult<Vec<StoredCode>> {
+    async fn list_unused_codes(
+        &self,
+        principal_id: PrincipalId,
+        purpose: CodePurpose,
+    ) -> StoreResult<Vec<StoredCode>> {
         let rows = sqlx::query!(
             "SELECT id, code_hash FROM one_time_codes \
              WHERE principal_id = $1 AND purpose = $2 AND used_at IS NULL",
@@ -364,7 +440,13 @@ impl IdentityStore for PgStore {
         )
         .fetch_all(&self.pool)
         .await?;
-        Ok(rows.into_iter().map(|r| StoredCode { id: r.id, code_hash: r.code_hash }).collect())
+        Ok(rows
+            .into_iter()
+            .map(|r| StoredCode {
+                id: r.id,
+                code_hash: r.code_hash,
+            })
+            .collect())
     }
 
     async fn mark_code_used(&self, code_id: uuid::Uuid) -> StoreResult<bool> {
@@ -378,7 +460,11 @@ impl IdentityStore for PgStore {
         Ok(row.is_some())
     }
 
-    async fn delete_unused_codes(&self, principal_id: PrincipalId, purpose: CodePurpose) -> StoreResult<()> {
+    async fn delete_unused_codes(
+        &self,
+        principal_id: PrincipalId,
+        purpose: CodePurpose,
+    ) -> StoreResult<()> {
         sqlx::query!(
             "DELETE FROM one_time_codes WHERE principal_id = $1 AND purpose = $2 AND used_at IS NULL",
             principal_id.0,
@@ -450,7 +536,8 @@ impl AuditStore for PgStore {
                     actor_id: row.actor_id.into(),
                     asserted_id: row.asserted_id.map(Into::into),
                     action: row.action,
-                    decision: AuditDecision::from_str(&row.decision).map_err(integrity("decision"))?,
+                    decision: AuditDecision::from_str(&row.decision)
+                        .map_err(integrity("decision"))?,
                     assurance,
                     reason: row.reason,
                     ip,

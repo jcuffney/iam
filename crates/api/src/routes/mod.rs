@@ -1,8 +1,8 @@
 //! Route table and the small infrastructure endpoints.
 
 mod audit_query;
-mod authorize;
 mod auth;
+mod authorize;
 mod connections;
 mod credentials;
 mod grants;
@@ -26,7 +26,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/start", post(auth::start))
         .route("/auth/finish", post(auth::finish))
         .route("/recover", post(recover::recover))
-        .route_layer(axum::middleware::from_fn_with_state(state.clone(), crate::ratelimit::limit_by_ip));
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::ratelimit::limit_by_ip,
+        ));
 
     Router::new()
         .route("/health", get(health))
@@ -37,13 +40,22 @@ pub fn build_router(state: AppState) -> Router {
         .route("/authorize", post(authorize::authorize))
         .route("/principals", post(principals::create))
         .route("/principals/{id}", get(principals::get))
-        .route("/principals/{id}/roles/{role}", put(principals::assign_role).delete(principals::revoke_role))
+        .route(
+            "/principals/{id}/roles/{role}",
+            put(principals::assign_role).delete(principals::revoke_role),
+        )
         .route("/principals/{id}/disable", post(principals::disable))
         .route("/principals/{id}/enable", post(principals::enable))
-        .route("/principals/{id}/recovery-codes", post(principals::reissue_recovery_codes))
+        .route(
+            "/principals/{id}/recovery-codes",
+            post(principals::reissue_recovery_codes),
+        )
         .route("/credentials/{id}", delete(credentials::delete))
         .route("/audit", get(audit_query::query))
-        .route("/connections", post(connections::create).get(connections::list))
+        .route(
+            "/connections",
+            post(connections::create).get(connections::list),
+        )
         .route("/connections/{id}", delete(connections::revoke))
         .route("/grants", post(grants::create))
         .route("/grants/{id}", delete(grants::revoke))
@@ -67,6 +79,8 @@ async fn metrics_endpoint(
 }
 
 /// Public key ring for ecosystem services to verify tokens locally.
-async fn jwks(axum::extract::State(state): axum::extract::State<AppState>) -> Json<serde_json::Value> {
+async fn jwks(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> Json<serde_json::Value> {
     Json(state.keyring().jwks())
 }

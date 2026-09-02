@@ -51,12 +51,17 @@ pub async fn recover(
     }
 
     // Verify + consume a recovery code.
-    crate::routes::register::consume_one_time_code(&state, principal.id, CodePurpose::Recovery, &req.code)
-        .await
-        .map_err(|_| {
-            // Uniform failure; audited as a deny.
-            ApiError::Unauthorized("recovery failed".into())
-        })?;
+    crate::routes::register::consume_one_time_code(
+        &state,
+        principal.id,
+        CodePurpose::Recovery,
+        &req.code,
+    )
+    .await
+    .map_err(|_| {
+        // Uniform failure; audited as a deny.
+        ApiError::Unauthorized("recovery failed".into())
+    })?;
 
     // Issue a recovery-scoped session: it can ONLY add a credential.
     let now = OffsetDateTime::now_utc();
@@ -105,5 +110,10 @@ pub async fn recover(
     )
     .await;
 
-    Ok(Json(TokenResponse { token, principal_id: principal.id, expires_at: token_expires, assurance: Assurance::Asserted }))
+    Ok(Json(TokenResponse {
+        token,
+        principal_id: principal.id,
+        expires_at: token_expires,
+        assurance: Assurance::Asserted,
+    }))
 }

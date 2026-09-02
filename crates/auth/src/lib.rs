@@ -12,8 +12,8 @@ mod webauthn;
 
 pub use error::AuthError;
 pub use recovery::{
-    RECOVERY_CODE_COUNT, encode_opaque, generate_code, generate_recovery_codes, generate_registration_token, hash_code,
-    verify_code,
+    RECOVERY_CODE_COUNT, encode_opaque, generate_code, generate_recovery_codes,
+    generate_registration_token, hash_code, verify_code,
 };
 pub use tokens::{Claims, EnvKeySource, KeyRing, SigningKeySource};
 pub use webauthn::{RegisteredCredential, VerifiedAssertion, WebauthnService};
@@ -23,6 +23,7 @@ pub use webauthn::{RegisteredCredential, VerifiedAssertion, WebauthnService};
 // webauthn-rs directly for them.
 pub mod ceremony {
     pub use webauthn_rs::prelude::{
-        CreationChallengeResponse, PublicKeyCredential, RegisterPublicKeyCredential, RequestChallengeResponse,
+        CreationChallengeResponse, PublicKeyCredential, RegisterPublicKeyCredential,
+        RequestChallengeResponse,
     };
 }

@@ -10,7 +10,9 @@ use ed25519_dalek::SigningKey;
 use ed25519_dalek::pkcs8::EncodePrivateKey;
 
 fn main() -> anyhow::Result<()> {
-    let kid = std::env::args().nth(1).unwrap_or_else(|| "dev1".to_string());
+    let kid = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "dev1".to_string());
 
     // Signing key: Ed25519 private key as PKCS#8 DER, base64-encoded.
     let mut seed = [0u8; 32];

@@ -43,7 +43,13 @@ pub async fn create(
     Json(req): Json<CreatePrincipalRequest>,
 ) -> ApiResult<Json<CreatePrincipalResponse>> {
     auth.require_full_scope()?;
-    require_permission(&state, &auth, Permission::Admin(AdminAction::ManagePrincipals), None).await?;
+    require_permission(
+        &state,
+        &auth,
+        Permission::Admin(AdminAction::ManagePrincipals),
+        None,
+    )
+    .await?;
 
     let org_id = auth.principal.org_id;
     let principal = Principal {
@@ -70,11 +76,17 @@ pub async fn create(
     // Recovery codes and a registration token, hashed at rest, shown once.
     let recovery_codes = generate_recovery_codes();
     let recovery_hashes = hash_all(&recovery_codes)?;
-    state.identity().insert_codes(principal.id, CodePurpose::Recovery, &recovery_hashes).await?;
+    state
+        .identity()
+        .insert_codes(principal.id, CodePurpose::Recovery, &recovery_hashes)
+        .await?;
 
     let registration_token = generate_registration_token();
     let token_hash = hash_code(&registration_token).map_err(|e| ApiError::Internal(e.into()))?;
-    state.identity().insert_codes(principal.id, CodePurpose::Registration, &[token_hash]).await?;
+    state
+        .identity()
+        .insert_codes(principal.id, CodePurpose::Registration, &[token_hash])
+        .await?;
 
     audit::record(
         &state,
@@ -91,7 +103,11 @@ pub async fn create(
     )
     .await;
 
-    Ok(Json(CreatePrincipalResponse { principal, recovery_codes, registration_token }))
+    Ok(Json(CreatePrincipalResponse {
+        principal,
+        recovery_codes,
+        registration_token,
+    }))
 }
 
 #[derive(Serialize)]
@@ -122,11 +138,23 @@ pub async fn get(
     let principal_id = parse_principal_id(&id)?;
 
     if principal_id != auth.principal.id {
-        require_permission(&state, &auth, Permission::Admin(AdminAction::ManagePrincipals), None).await?;
+        require_permission(
+            &state,
+            &auth,
+            Permission::Admin(AdminAction::ManagePrincipals),
+            None,
+        )
+        .await?;
     }
 
     let principal = state.identity().get_principal(principal_id).await?;
-    let roles = state.identity().roles_for_principal(principal_id).await?.into_iter().map(|r| r.name).collect();
+    let roles = state
+        .identity()
+        .roles_for_principal(principal_id)
+        .await?
+        .into_iter()
+        .map(|r| r.name)
+        .collect();
     let credentials = state
         .identity()
         .list_credentials(principal_id)
@@ -144,7 +172,11 @@ pub async fn get(
         })
         .collect();
 
-    Ok(Json(PrincipalView { principal, roles, credentials }))
+    Ok(Json(PrincipalView {
+        principal,
+        roles,
+        credentials,
+    }))
 }
 
 /// PUT /principals/{id}/roles/{role} — assign a role (admin:manage_roles).
@@ -154,7 +186,13 @@ pub async fn assign_role(
     Path((id, role_name)): Path<(String, String)>,
 ) -> ApiResult<Json<serde_json::Value>> {
     auth.require_full_scope()?;
-    require_permission(&state, &auth, Permission::Admin(AdminAction::ManageRoles), None).await?;
+    require_permission(
+        &state,
+        &auth,
+        Permission::Admin(AdminAction::ManageRoles),
+        None,
+    )
+    .await?;
     let principal_id = parse_principal_id(&id)?;
 
     let target = state.identity().get_principal(principal_id).await?;
@@ -176,7 +214,13 @@ pub async fn revoke_role(
     Path((id, role_name)): Path<(String, String)>,
 ) -> ApiResult<Json<serde_json::Value>> {
     auth.require_full_scope()?;
-    require_permission(&state, &auth, Permission::Admin(AdminAction::ManageRoles), None).await?;
+    require_permission(
+        &state,
+        &auth,
+        Permission::Admin(AdminAction::ManageRoles),
+        None,
+    )
+    .await?;
     let principal_id = parse_principal_id(&id)?;
 
     let target = state.identity().get_principal(principal_id).await?;
@@ -198,7 +242,14 @@ pub async fn disable(
     auth: Authenticated,
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    set_disabled(&state, &auth, &id, Some(OffsetDateTime::now_utc()), "principal.disable").await
+    set_disabled(
+        &state,
+        &auth,
+        &id,
+        Some(OffsetDateTime::now_utc()),
+        "principal.disable",
+    )
+    .await
 }
 
 /// POST /principals/{id}/enable (admin:manage_principals).
@@ -225,15 +276,28 @@ pub async fn reissue_recovery_codes(
     auth.require_full_scope()?;
     let principal_id = parse_principal_id(&id)?;
 
-    let is_self_cryptographic = principal_id == auth.principal.id && auth.assurance() == iam_core::Assurance::Cryptographic;
+    let is_self_cryptographic =
+        principal_id == auth.principal.id && auth.assurance() == iam_core::Assurance::Cryptographic;
     if !is_self_cryptographic {
-        require_permission(&state, &auth, Permission::Admin(AdminAction::ManagePrincipals), None).await?;
+        require_permission(
+            &state,
+            &auth,
+            Permission::Admin(AdminAction::ManagePrincipals),
+            None,
+        )
+        .await?;
     }
 
-    state.identity().delete_unused_codes(principal_id, CodePurpose::Recovery).await?;
+    state
+        .identity()
+        .delete_unused_codes(principal_id, CodePurpose::Recovery)
+        .await?;
     let recovery_codes = generate_recovery_codes();
     let hashes = hash_all(&recovery_codes)?;
-    state.identity().insert_codes(principal_id, CodePurpose::Recovery, &hashes).await?;
+    state
+        .identity()
+        .insert_codes(principal_id, CodePurpose::Recovery, &hashes)
+        .await?;
 
     audit::record(
         &state,
@@ -263,9 +327,18 @@ async fn set_disabled(
     action: &str,
 ) -> ApiResult<Json<serde_json::Value>> {
     auth.require_full_scope()?;
-    require_permission(state, auth, Permission::Admin(AdminAction::ManagePrincipals), None).await?;
+    require_permission(
+        state,
+        auth,
+        Permission::Admin(AdminAction::ManagePrincipals),
+        None,
+    )
+    .await?;
     let principal_id = parse_principal_id(id)?;
-    state.identity().set_principal_disabled(principal_id, disabled_at).await?;
+    state
+        .identity()
+        .set_principal_disabled(principal_id, disabled_at)
+        .await?;
 
     audit::record(
         state,
@@ -284,7 +357,13 @@ async fn set_disabled(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
-async fn audit_role_change(state: &AppState, auth: &Authenticated, target: PrincipalId, role: &str, action: &str) {
+async fn audit_role_change(
+    state: &AppState,
+    auth: &Authenticated,
+    target: PrincipalId,
+    role: &str,
+    action: &str,
+) {
     audit::record(
         state,
         AuditEntry {
@@ -302,11 +381,15 @@ async fn audit_role_change(state: &AppState, auth: &Authenticated, target: Princ
 }
 
 fn hash_all(codes: &[String]) -> ApiResult<Vec<String>> {
-    codes.iter().map(|c| hash_code(c).map_err(|e| ApiError::Internal(e.into()))).collect()
+    codes
+        .iter()
+        .map(|c| hash_code(c).map_err(|e| ApiError::Internal(e.into())))
+        .collect()
 }
 
 pub(crate) fn parse_principal_id(s: &str) -> ApiResult<PrincipalId> {
-    s.parse().map_err(|_| ApiError::BadRequest("invalid principal id".into()))
+    s.parse()
+        .map_err(|_| ApiError::BadRequest("invalid principal id".into()))
 }
 
 pub(crate) fn b64url(bytes: &[u8]) -> String {
