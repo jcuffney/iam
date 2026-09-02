@@ -1,0 +1,27 @@
+# cargo-audit configuration.
+#
+# The advisories below are all TRANSITIVE and not reachable in this service's
+# usage, and none has an in-reach fix. Each is triaged individually so that any
+# NEW advisory still fails CI. Revisit whenever the AWS SDK or jsonwebtoken
+# dependency trees move.
+
+[advisories]
+ignore = [
+    # rsa — Marvin timing side-channel. Pulled in only by jsonwebtoken's
+    # `rust_crypto` backend; this service signs and verifies with EdDSA
+    # exclusively, so the RSA code path never executes. No fixed release exists.
+    "RUSTSEC-2023-0071",
+
+    # h2 (0.3.27) — unbounded empty DATA frame DoS, which targets HTTP/2
+    # *servers*. Our h2 is the AWS SDK's HTTP/2 *client* talking to AWS, pinned
+    # at 0.3.27 by aws-smithy-http-client. Not reachable; fix needs an AWS SDK
+    # HTTP-stack upgrade we do not control.
+    "RUSTSEC-2026-0258",
+
+    # rustls-webpki (0.101.7 via rustls 0.21) — certificate-verification edge
+    # cases in the AWS SDK's TLS client validating AWS's own endpoints, pinned
+    # by aws-smithy-http-client. Not reachable serving untrusted certs.
+    "RUSTSEC-2026-0098",
+    "RUSTSEC-2026-0099",
+    "RUSTSEC-2026-0104",
+]

@@ -267,6 +267,11 @@ cargo sqlx prepare --workspace
   codes. A distributed limiter can be slotted in behind the same seam later.
 - **`/metrics` is unauthenticated** — protect it at the network layer when
   deployed.
+- **Dependency advisories.** CI runs `cargo audit`. A handful of transitive
+  advisories in the AWS SDK's TLS/HTTP client stack and in jsonwebtoken's
+  (unused) RSA backend are triaged and ignored in [`.cargo/audit.toml`](.cargo/audit.toml),
+  each with a rationale; any *new* advisory still fails the build. Revisit when
+  those dependency trees move.
 
 ## License
 
