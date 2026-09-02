@@ -16,7 +16,6 @@ use uuid::Uuid;
 use crate::audit::{self, AuditEntry};
 use crate::error::{ApiError, ApiResult};
 use crate::ip::ClientIp;
-use crate::ratelimit::enforce_principal;
 use crate::routes::auth::TokenResponse;
 use crate::state::AppState;
 
@@ -44,8 +43,7 @@ pub async fn recover(
         .await
         .map_err(|_| ApiError::Unauthorized("recovery failed".into()))?;
 
-    enforce_principal(&state, principal.id.0)?;
-
+    // Pre-auth: throttled per-IP by the middleware, not per-target-principal.
     if principal.is_disabled() {
         return Err(ApiError::Unauthorized("recovery failed".into()));
     }

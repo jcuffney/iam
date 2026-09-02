@@ -49,7 +49,6 @@ struct Env {
     router: Router,
     identity: Arc<MemoryIdentityStore>,
     audit: Arc<MemoryAuditStore>,
-    spend: Arc<InMemorySpendLedger>,
     org: Org,
 }
 
@@ -80,6 +79,7 @@ impl Env {
             invocations,
             token_ttl: Duration::from_secs(900),
             session_ttl: Duration::from_secs(43_200),
+            trusted_proxy_hops: 0,
             limiters: Arc::new(RateLimiters::new(10_000)),
             metrics: None,
         });
@@ -111,7 +111,6 @@ impl Env {
             router,
             identity,
             audit,
-            spend,
             org,
         }
     }
@@ -1035,46 +1034,71 @@ async fn revoking_a_connection_immediately_invalidates_its_grants() {
 }
 
 #[tokio::test]
-async fn spend_constraint_is_enforced_before_invocation() {
+async fn spend_and_rate_limit_constraints_are_rejected_until_backed() {
+    // Spend/RateLimit caps enforce nothing today (no usage is recorded into the
+    // ledgers), so the API refuses them rather than advertise a cap that does
+    // nothing. Enforcement remains proven at the policy layer's unit tests.
     let env = Env::new().await;
     let grantee = env
         .seed_principal("jane4", PrincipalKind::Human, roles::USER)
         .await;
-    // Grant carries a daily spend cap of 1000 minor units.
-    let (_owner_token, capability, _conn) = setup_capability(
-        &env,
-        "joe4",
-        grantee,
-        json!([{"type": "spend", "limit_minor": 1000, "period": "day"}]),
-    )
-    .await;
+    let (_oid, owner_token, _od) = onboard(&env, "joe4", PrincipalKind::Human, roles::ADMIN).await;
 
-    let (_dev, device_token, _d) =
-        onboard(&env, "speaker4", PrincipalKind::Device, roles::DEVICE).await;
-    let invoke = json!({"asserted_principal": grantee, "action": "capability:invoke", "capability": capability.clone()});
-
-    // Under the cap → allowed.
     let (_s, body) = env
         .call(
             "POST",
-            "/authorize",
-            Some(&device_token),
-            Some(invoke.clone()),
+            "/connections",
+            Some(&owner_token),
+            Some(json!({"provider": "anthropic", "kind": "api_key", "secret": "sk", "capabilities": ["model:claude-fable-5"]})),
         )
         .await;
-    assert_eq!(body["allowed"], true, "{body:?}");
+    let connection_id = body["id"].as_str().unwrap().to_string();
+    let capability = json!({"connection_id": connection_id, "operation": {"type": "model_endpoint", "name": "claude-fable-5"}});
 
-    // Prime the ledger to the cap for the grantee + capability.
-    let cap_ref: iam_core::CapabilityRef = serde_json::from_value(capability).unwrap();
-    env.spend
-        .record(grantee, &cap_ref, 1000, OffsetDateTime::now_utc());
-
-    // Now the same invocation is refused BEFORE it happens.
-    let (_s, body) = env
-        .call("POST", "/authorize", Some(&device_token), Some(invoke))
+    // A spend cap is rejected.
+    let (status, _) = env
+        .call(
+            "POST",
+            "/grants",
+            Some(&owner_token),
+            Some(json!({
+                "principal_id": grantee,
+                "capability": capability,
+                "constraints": [{"type": "spend", "limit_minor": 1000, "period": "day"}],
+            })),
+        )
         .await;
-    assert_eq!(body["allowed"], false);
-    assert_eq!(body["reason"], "constraint_violated", "{body:?}");
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // So is a rate-limit cap.
+    let (status, _) = env
+        .call(
+            "POST",
+            "/grants",
+            Some(&owner_token),
+            Some(json!({
+                "principal_id": grantee,
+                "capability": capability,
+                "constraints": [{"type": "rate_limit", "max_invocations": 5, "per_seconds": 60}],
+            })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // A time_window cap is accepted (stateless, actually enforced).
+    let (status, _) = env
+        .call(
+            "POST",
+            "/grants",
+            Some(&owner_token),
+            Some(json!({
+                "principal_id": grantee,
+                "capability": capability,
+                "constraints": [{"type": "time_window", "start": "08:00:00", "end": "18:00:00"}],
+            })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
 }
 
 #[tokio::test]
@@ -1113,6 +1137,145 @@ async fn opaque_connection_rejects_a_scoped_grant() {
         )
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn admin_cannot_act_on_a_principal_in_another_org() {
+    let env = Env::new().await;
+    let (_aid, admin_token, _ad) =
+        onboard(&env, "admin-a", PrincipalKind::Human, roles::ADMIN).await;
+
+    // A principal in a DIFFERENT org.
+    let other_org = Org {
+        id: OrgId::new(),
+        slug: "other-org".into(),
+        name: "Other".into(),
+        created_at: OffsetDateTime::now_utc(),
+    };
+    env.identity.create_org(&other_org).await.unwrap();
+    for name in roles::ALL {
+        let role = Role {
+            id: RoleId::new(),
+            org_id: other_org.id,
+            name: name.into(),
+        };
+        env.identity.create_role(&role).await.unwrap();
+    }
+    let outsider = Principal {
+        id: PrincipalId::new(),
+        org_id: other_org.id,
+        kind: PrincipalKind::Human,
+        handle: "outsider".into(),
+        display_name: "Outsider".into(),
+        created_at: OffsetDateTime::now_utc(),
+        disabled_at: None,
+    };
+    env.identity.create_principal(&outsider).await.unwrap();
+
+    // Every admin verb on a cross-org target returns 404 (never confirms the
+    // target exists, never mutates it).
+    let oid = outsider.id;
+    assert_eq!(
+        env.call(
+            "GET",
+            &format!("/principals/{oid}"),
+            Some(&admin_token),
+            None
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        env.call(
+            "PUT",
+            &format!("/principals/{oid}/roles/user"),
+            Some(&admin_token),
+            None
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        env.call(
+            "POST",
+            &format!("/principals/{oid}/disable"),
+            Some(&admin_token),
+            None
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        env.call(
+            "POST",
+            &format!("/principals/{oid}/recovery-codes"),
+            Some(&admin_token),
+            None
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+
+    // And the outsider was not disabled by the attempt.
+    assert!(!env.identity.get_principal(oid).await.unwrap().is_disabled());
+}
+
+#[tokio::test]
+async fn grant_over_an_expired_connection_is_refused() {
+    let env = Env::new().await;
+    let (_oid, owner_token, _od) =
+        onboard(&env, "joe-exp", PrincipalKind::Human, roles::ADMIN).await;
+    let grantee = env
+        .seed_principal("jane-exp", PrincipalKind::Human, roles::USER)
+        .await;
+
+    // A connection that is already expired.
+    let past = (OffsetDateTime::now_utc() - time::Duration::hours(1))
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap();
+    let (status, body) = env
+        .call(
+            "POST",
+            "/connections",
+            Some(&owner_token),
+            Some(json!({
+                "provider": "fs", "kind": "mcp", "secret": "s",
+                "capabilities": ["mcp:fs.read"], "expires_at": past,
+            })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body:?}");
+    let connection_id = body["id"].as_str().unwrap().to_string();
+    let capability = json!({"connection_id": connection_id, "operation": {"type": "mcp_tool", "name": "fs.read"}});
+
+    let (status, _) = env
+        .call(
+            "POST",
+            "/grants",
+            Some(&owner_token),
+            Some(json!({"principal_id": grantee, "capability": capability})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Invoking it is refused because the connection is expired — the in-memory
+    // store now honors expiry exactly like Postgres.
+    let (_dev, device_token, _d) =
+        onboard(&env, "speaker-exp2", PrincipalKind::Device, roles::DEVICE).await;
+    let (_s, body) = env
+        .call(
+            "POST",
+            "/authorize",
+            Some(&device_token),
+            Some(json!({"asserted_principal": grantee, "action": "capability:invoke", "capability": capability})),
+        )
+        .await;
+    assert_eq!(body["allowed"], false);
+    assert_eq!(body["reason"], "connection_inactive", "{body:?}");
 }
 
 // ===========================================================================

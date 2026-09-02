@@ -3,6 +3,11 @@ use time::{OffsetDateTime, Time};
 
 use crate::{CapabilityRef, GrantId, PrincipalId};
 
+// Serialize `TimeWindow` bounds as plain `"HH:MM:SS"` strings. The `time`
+// crate's default human-readable format demands a subsecond (`HH:MM:SS.sss`),
+// which is a poor API; this keeps the wire and jsonb forms clean.
+time::serde::format_description!(hms, Time, "[hour]:[minute]:[second]");
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SpendPeriod {
@@ -19,8 +24,13 @@ pub enum Constraint {
         max_invocations: u32,
         per_seconds: u64,
     },
-    /// Allowed wall-clock window, evaluated in UTC.
-    TimeWindow { start: Time, end: Time },
+    /// Allowed wall-clock window, evaluated in UTC. Bounds are `"HH:MM:SS"`.
+    TimeWindow {
+        #[serde(with = "hms")]
+        start: Time,
+        #[serde(with = "hms")]
+        end: Time,
+    },
     /// Usage cost cap for metered capabilities (model endpoints). `limit_minor`
     /// is in minor currency units. This is the seam the wallet/escrow layer
     /// plugs into later; evaluation goes through the `SpendLedger` trait.

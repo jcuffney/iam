@@ -7,7 +7,8 @@ use iam_core::{AdminAction, Assurance, AuditDecision, Permission};
 use crate::audit::{self, AuditEntry};
 use crate::error::ApiResult;
 use crate::extract::Authenticated;
-use crate::guard::require_permission;
+use crate::guard::{require_permission, same_org_principal};
+use crate::ip::ClientIp;
 use crate::routes::principals::{b64url, from_b64url};
 use crate::state::AppState;
 
@@ -19,6 +20,7 @@ use crate::state::AppState;
 pub async fn delete(
     State(state): State<AppState>,
     auth: Authenticated,
+    ClientIp(ip): ClientIp,
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     auth.require_full_scope()?;
@@ -37,6 +39,8 @@ pub async fn delete(
             None,
         )
         .await?;
+        // An admin may only revoke credentials of principals in its own org.
+        same_org_principal(&state, &auth, owner).await?;
     }
 
     state.identity().delete_credential(&credential_id).await?;
@@ -55,7 +59,7 @@ pub async fn delete(
                 b64url(&credential_id),
                 owner
             )),
-            ip: None,
+            ip,
         },
     )
     .await;

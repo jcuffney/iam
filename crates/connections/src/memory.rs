@@ -178,11 +178,13 @@ impl ConnectionsStore for MemoryConnectionsStore {
             .cloned();
 
         let Some(grant) = grant else { return Ok(None) };
-        // Report the connection's active state; policy decides the reason.
+        // Report the connection's active state; policy decides the reason. Must
+        // match the Postgres query, which checks revocation AND expiry — hence
+        // `is_active(now)`, not just `revoked_at`.
         let connection_active = d
             .connections
             .get(&capability.connection_id)
-            .map(|r| r.connection.revoked_at.is_none())
+            .map(|r| r.connection.is_active(OffsetDateTime::now_utc()))
             .unwrap_or(false);
         Ok(Some(GrantForAuthorization {
             grant,

@@ -30,8 +30,21 @@ const RATE_PER_MINUTE: u32 = 30;
 /// application state. Idempotent; safe to call on startup and from the seed bin.
 pub async fn build(config: &Config, metrics: Option<PrometheusHandle>) -> anyhow::Result<Built> {
     // Identity database (Postgres): identity tree + audit trail.
+    //
+    // Migrations (DDL) run as the OWNER role via the migration URL; the service
+    // then connects as the (possibly non-owner) app role for normal traffic, so
+    // a compromised app credential cannot TRUNCATE/DROP the append-only audit
+    // table. When no migration URL is set, both use the same role (single-role
+    // dev).
+    let migration_url = config
+        .migration_database_url
+        .as_deref()
+        .unwrap_or(&config.database_url);
+    let owner_pool = iam_store::connect_postgres(migration_url, 1).await?;
+    iam_store::run_identity_migrations(&owner_pool).await?;
+    owner_pool.close().await;
+
     let id_pool = iam_store::connect_postgres(&config.database_url, 10).await?;
-    iam_store::run_identity_migrations(&id_pool).await?;
     let pg = Arc::new(PgStore::new(id_pool));
 
     // Connections database (its own pool, role, and encryption key).
@@ -73,6 +86,7 @@ pub async fn build(config: &Config, metrics: Option<PrometheusHandle>) -> anyhow
         invocations: Arc::new(InMemoryInvocationLedger::new()),
         token_ttl: config.token_ttl,
         session_ttl: config.session_ttl,
+        trusted_proxy_hops: config.trusted_proxy_hops,
         limiters: limiters.clone(),
         metrics,
     });
