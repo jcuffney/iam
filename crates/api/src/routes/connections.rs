@@ -19,6 +19,7 @@ use crate::audit::{self, AuditEntry};
 use crate::error::{ApiError, ApiResult};
 use crate::extract::Authenticated;
 use crate::guard::require_permission;
+use crate::ip::ClientIp;
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -70,6 +71,7 @@ impl ConnectionView {
 pub async fn create(
     State(state): State<AppState>,
     auth: Authenticated,
+    ClientIp(ip): ClientIp,
     Json(req): Json<CreateConnectionRequest>,
 ) -> ApiResult<Json<ConnectionView>> {
     auth.require_full_scope()?;
@@ -135,7 +137,7 @@ pub async fn create(
             decision: AuditDecision::Allow,
             assurance: Some(auth.assurance()),
             reason: Some(format!("connection {id}")),
-            ip: None,
+            ip,
         },
     )
     .await;
@@ -175,6 +177,7 @@ pub async fn list(
 pub async fn revoke(
     State(state): State<AppState>,
     auth: Authenticated,
+    ClientIp(ip): ClientIp,
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     auth.require_full_scope()?;
@@ -213,7 +216,7 @@ pub async fn revoke(
             decision: AuditDecision::Allow,
             assurance: Some(auth.assurance()),
             reason: Some(format!("connection {connection_id}")),
-            ip: None,
+            ip,
         },
     )
     .await;

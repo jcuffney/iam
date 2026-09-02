@@ -30,21 +30,51 @@ const RATE_PER_MINUTE: u32 = 30;
 /// application state. Idempotent; safe to call on startup and from the seed bin.
 pub async fn build(config: &Config, metrics: Option<PrometheusHandle>) -> anyhow::Result<Built> {
     // Identity database (Postgres): identity tree + audit trail.
-    let id_pool = iam_store::connect_postgres(&config.database_url, 10).await?;
-    iam_store::run_identity_migrations(&id_pool).await?;
+    //
+    // Migrations (DDL) run as the OWNER role via the migration URL; the service
+    // then connects as the (possibly non-owner) app role for normal traffic, so
+    // a compromised app credential cannot TRUNCATE/DROP the append-only audit
+    // table. When no migration URL is set, both use the same role (single-role
+    // dev). With bootstrap off (deployed), the `admin` binary owns migrations
+    // and this process never sees an owner credential.
+    if config.bootstrap {
+        let migration_url = config
+            .migration_database_url
+            .as_deref()
+            .unwrap_or(&config.database_url);
+        let owner_pool = iam_store::connect_postgres(migration_url, 1).await?;
+        iam_store::run_identity_migrations(&owner_pool).await?;
+        owner_pool.close().await;
+    }
+
+    let id_pool = iam_store::connect_postgres(&config.database_url, config.db_pool_max).await?;
     let pg = Arc::new(PgStore::new(id_pool));
 
     // Connections database (its own pool, role, and encryption key).
-    let conn_pool = iam_connections::connect(&config.connections_database_url, 5).await?;
-    iam_connections::run_migrations(&conn_pool).await?;
+    let conn_pool = iam_connections::connect(
+        &config.connections_database_url,
+        config.connections_pool_max,
+    )
+    .await?;
+    if config.bootstrap {
+        iam_connections::run_migrations(&conn_pool).await?;
+    }
     let enc_key = EncryptionKey::from_base64(&config.connections_enc_key)?;
     let connections: Arc<dyn ConnectionsStore> =
         Arc::new(PgConnectionsStore::new(conn_pool, enc_key));
 
-    // Ephemeral state (DynamoDB): challenges + sessions.
+    // Ephemeral state (DynamoDB): challenges + sessions. With bootstrap off the
+    // tables (and their TTL) are IaC's responsibility, and the runtime role
+    // needs only data-plane access.
     let dynamo_client = iam_store::connect_dynamo(config.dynamo_endpoint.as_deref()).await;
-    let dynamo = Arc::new(DynamoStore::new(dynamo_client));
-    dynamo.ensure_tables().await?;
+    let dynamo = Arc::new(DynamoStore::with_tables(
+        dynamo_client,
+        config.dynamo_challenges_table.as_str(),
+        config.dynamo_sessions_table.as_str(),
+    ));
+    if config.bootstrap {
+        dynamo.ensure_tables().await?;
+    }
 
     let webauthn = Arc::new(WebauthnService::new(
         &config.rp_id,
@@ -73,8 +103,10 @@ pub async fn build(config: &Config, metrics: Option<PrometheusHandle>) -> anyhow
         invocations: Arc::new(InMemoryInvocationLedger::new()),
         token_ttl: config.token_ttl,
         session_ttl: config.session_ttl,
+        trusted_proxy_hops: config.trusted_proxy_hops,
         limiters: limiters.clone(),
         metrics,
+        metrics_token: config.metrics_token.clone(),
     });
 
     Ok(Built {

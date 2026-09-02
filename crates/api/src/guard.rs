@@ -7,13 +7,31 @@
 
 use std::net::IpAddr;
 
-use iam_core::{AuditDecision, Permission};
+use iam_core::{AuditDecision, Permission, Principal, PrincipalId};
 use iam_policy::authorize;
 
 use crate::audit::{self, AuditEntry};
 use crate::error::{ApiError, ApiResult};
 use crate::extract::Authenticated;
 use crate::state::AppState;
+
+/// Load a target principal and confirm it shares the actor's org.
+///
+/// Returns `NotFound` (never `Forbidden`) on a cross-org target so the response
+/// cannot be used to confirm the existence of principals in another tenant.
+/// Every admin endpoint that acts on a `{id}` from the path must go through
+/// this — an admin's authority is scoped to its own org.
+pub async fn same_org_principal(
+    state: &AppState,
+    actor: &Authenticated,
+    target: PrincipalId,
+) -> ApiResult<Principal> {
+    let principal = state.identity().get_principal(target).await?;
+    if principal.org_id != actor.principal.org_id {
+        return Err(ApiError::NotFound);
+    }
+    Ok(principal)
+}
 
 /// Require that the authenticated principal holds `permission` at its session's
 /// assurance. Audits and returns `Forbidden` on denial.

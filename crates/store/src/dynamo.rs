@@ -37,11 +37,23 @@ pub struct DynamoStore {
 }
 
 impl DynamoStore {
+    /// Store using the default table names.
     pub fn new(client: Client) -> Self {
+        Self::with_tables(client, CHALLENGES_TABLE, SESSIONS_TABLE)
+    }
+
+    /// Store reading/writing the given table names. Deployed environments
+    /// pre-create tables in IaC (possibly namespaced) and run with a role that
+    /// has no control-plane access, so the names must follow the environment.
+    pub fn with_tables(
+        client: Client,
+        challenges_table: impl Into<String>,
+        sessions_table: impl Into<String>,
+    ) -> Self {
         Self {
             client,
-            challenges_table: CHALLENGES_TABLE.to_string(),
-            sessions_table: SESSIONS_TABLE.to_string(),
+            challenges_table: challenges_table.into(),
+            sessions_table: sessions_table.into(),
         }
     }
 

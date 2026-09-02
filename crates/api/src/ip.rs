@@ -6,31 +6,52 @@ use std::net::{IpAddr, SocketAddr};
 use axum::extract::{ConnectInfo, FromRequestParts};
 use axum::http::request::Parts;
 
-/// Extractor form of [`client_ip`], usable directly in handler signatures for
-/// any state type. Never fails.
-pub struct ClientIp(pub Option<IpAddr>);
+use crate::state::AppState;
 
-impl<S: Send + Sync> FromRequestParts<S> for ClientIp {
-    type Rejection = std::convert::Infallible;
-
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        Ok(ClientIp(client_ip(parts)))
-    }
-}
-
-/// Best-effort client IP: the first `X-Forwarded-For` hop when present
-/// (API Gateway / reverse proxy), otherwise the peer address from
-/// `ConnectInfo` (native server). Returns `None` when neither is available.
-pub fn client_ip(parts: &Parts) -> Option<IpAddr> {
-    if let Some(xff) = parts.headers.get("x-forwarded-for")
-        && let Ok(value) = xff.to_str()
-        && let Some(first) = value.split(',').next()
-        && let Ok(ip) = first.trim().parse::<IpAddr>()
+/// Resolve the client IP, honoring exactly `trusted_hops` reverse proxies.
+///
+/// `X-Forwarded-For` is client-controlled, so it is only consulted when a proxy
+/// count is configured:
+/// - `trusted_hops == 0`: ignore `X-Forwarded-For` entirely; use the connection
+///   peer (`ConnectInfo`). A client cannot spoof its source this way.
+/// - `trusted_hops == N`: the rightmost `N` entries are our own proxies, so the
+///   real client is the `(N+1)`th entry from the right. If the header is shorter
+///   than that (a spoof attempt or a misconfiguration), fall back to the peer.
+pub fn client_ip(parts: &Parts, trusted_hops: usize) -> Option<IpAddr> {
+    if trusted_hops > 0
+        && let Some(value) = parts
+            .headers
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
     {
-        return Some(ip);
+        let hops: Vec<&str> = value
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect();
+        if hops.len() > trusted_hops
+            && let Ok(ip) = hops[hops.len() - 1 - trusted_hops].parse::<IpAddr>()
+        {
+            return Some(ip);
+        }
     }
     parts
         .extensions
         .get::<ConnectInfo<SocketAddr>>()
         .map(|ci| ci.0.ip())
+}
+
+/// Extractor form of [`client_ip`] that reads the configured trusted-hop count
+/// from application state. Never fails.
+pub struct ClientIp(pub Option<IpAddr>);
+
+impl FromRequestParts<AppState> for ClientIp {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        Ok(ClientIp(client_ip(parts, state.trusted_proxy_hops())))
+    }
 }

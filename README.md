@@ -61,7 +61,7 @@ One Cargo workspace, six crates, dependencies pointing in one direction only.
 | [`iam-auth`](crates/auth) | WebAuthn ceremonies, the rotatable EdDSA token key ring (+ JWKS), and one-time recovery/registration codes. |
 | [`iam-store`](crates/store) | The durable identity tree (Postgres) and ephemeral challenges/sessions (DynamoDB), behind traits with in-memory implementations for tests. |
 | [`iam-connections`](crates/connections) | Outbound credentials (OAuth grants, API keys, MCP auth). **Store-isolated** — see below. |
-| [`iam-api`](crates/api) | The only crate that knows HTTP. `axum` handlers, the `iam`/`seed`/`keygen` binaries. |
+| [`iam-api`](crates/api) | The only crate that knows HTTP. `axum` handlers, the `iam`/`seed`/`keygen`/`admin` binaries. |
 
 `Credential` is modeled as an enum with a `Passkey` variant today so a `Wallet`
 variant can be added later without reshaping anything.
@@ -252,21 +252,36 @@ cargo sqlx prepare --workspace
 
 ---
 
-## Deployment notes
+## Deployment
+
+The service deploys to AWS as a near-free serverless stack — Lambda (arm64)
+behind an API Gateway HTTP API, Aurora Serverless v2 scaling to zero, and the
+DynamoDB tables pre-created by IaC. Everything lives in [`infra/`](infra/)
+(Terraform) with a step-by-step bootstrap runbook in
+[`infra/README.md`](infra/README.md); pushes to `main` deploy via
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) (GitHub OIDC, no
+long-lived keys).
 
 - **Lambda.** The handler logic is runtime-agnostic: `build_router` returns a
   plain `axum::Router`, and the `lambda` cargo feature swaps the native server
   for `lambda_http::run` (with vendored OpenSSL). No Lambda types leak into
-  handler signatures. Build with `cargo lambda` behind API Gateway.
-- **Secrets.** `IAM_SIGNING_KEYS` and `IAM_CONNECTIONS_ENC_KEY` come from AWS
-  Secrets Manager in deployed environments. **Back up `IAM_CONNECTIONS_ENC_KEY`
-  out of band** — losing it makes every stored connection secret unrecoverable,
-  by design.
+  handler signatures; the entry point surfaces API Gateway's authoritative
+  `sourceIp` as `ConnectInfo` so rate limiting and audit see real client IPs.
+- **Startup does no DDL in the cloud.** `IAM_BOOTSTRAP=false` skips migrations
+  and DynamoDB table creation; a separate `admin` binary (deployed as its own
+  Lambda, invoked as `{"task":"migrate"|"seed"}`) owns them, and only it holds
+  owner-role database credentials. Local dev is unchanged: `cargo run` still
+  bootstraps everything.
+- **Secrets.** `IAM_SIGNING_KEYS` and `IAM_CONNECTIONS_ENC_KEY` are injected as
+  Lambda environment variables for now (an SSM Parameter Store key source is
+  the planned upgrade behind the same seam). **Back up
+  `IAM_CONNECTIONS_ENC_KEY` out of band** — losing it makes every stored
+  connection secret unrecoverable, by design.
 - **Rate limiting is per-instance** (in-process). Across many Lambda instances it
   is best-effort; the real brute-force backstop is argon2 hashing plus single-use
   codes. A distributed limiter can be slotted in behind the same seam later.
-- **`/metrics` is unauthenticated** — protect it at the network layer when
-  deployed.
+- **`/metrics`** requires `Authorization: Bearer $IAM_METRICS_TOKEN` when the
+  token is set (it is in the cloud); unset locally it stays open.
 - **Dependency advisories.** CI runs `cargo audit`. A handful of transitive
   advisories in the AWS SDK's TLS/HTTP client stack and in jsonwebtoken's
   (unused) RSA backend are triaged and ignored in [`.cargo/audit.toml`](.cargo/audit.toml),

@@ -11,10 +11,13 @@ use iam_store::CodePurpose;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
+use std::net::IpAddr;
+
 use crate::audit::{self, AuditEntry};
 use crate::error::{ApiError, ApiResult};
 use crate::extract::Authenticated;
-use crate::guard::require_permission;
+use crate::guard::{require_permission, same_org_principal};
+use crate::ip::ClientIp;
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -40,6 +43,7 @@ pub struct CreatePrincipalResponse {
 pub async fn create(
     State(state): State<AppState>,
     auth: Authenticated,
+    ClientIp(ip): ClientIp,
     Json(req): Json<CreatePrincipalRequest>,
 ) -> ApiResult<Json<CreatePrincipalResponse>> {
     auth.require_full_scope()?;
@@ -98,7 +102,7 @@ pub async fn create(
             decision: AuditDecision::Allow,
             assurance: Some(auth.assurance()),
             reason: Some(format!("created {}", principal.id)),
-            ip: None,
+            ip,
         },
     )
     .await;
@@ -137,7 +141,11 @@ pub async fn get(
     auth.require_full_scope()?;
     let principal_id = parse_principal_id(&id)?;
 
-    if principal_id != auth.principal.id {
+    // Self is always visible; otherwise require admin AND same-org (the guard
+    // returns NotFound for a cross-org target).
+    let principal = if principal_id == auth.principal.id {
+        auth.principal.clone()
+    } else {
         require_permission(
             &state,
             &auth,
@@ -145,9 +153,9 @@ pub async fn get(
             None,
         )
         .await?;
-    }
+        same_org_principal(&state, &auth, principal_id).await?
+    };
 
-    let principal = state.identity().get_principal(principal_id).await?;
     let roles = state
         .identity()
         .roles_for_principal(principal_id)
@@ -183,6 +191,7 @@ pub async fn get(
 pub async fn assign_role(
     State(state): State<AppState>,
     auth: Authenticated,
+    ClientIp(ip): ClientIp,
     Path((id, role_name)): Path<(String, String)>,
 ) -> ApiResult<Json<serde_json::Value>> {
     auth.require_full_scope()?;
@@ -195,7 +204,7 @@ pub async fn assign_role(
     .await?;
     let principal_id = parse_principal_id(&id)?;
 
-    let target = state.identity().get_principal(principal_id).await?;
+    let target = same_org_principal(&state, &auth, principal_id).await?;
     let role = state
         .identity()
         .get_role_by_name(target.org_id, &role_name)
@@ -203,7 +212,7 @@ pub async fn assign_role(
         .map_err(|_| ApiError::BadRequest(format!("unknown role: {role_name}")))?;
     state.identity().assign_role(principal_id, role.id).await?;
 
-    audit_role_change(&state, &auth, principal_id, &role_name, "role.assign").await;
+    audit_role_change(&state, &auth, principal_id, &role_name, "role.assign", ip).await;
     Ok(Json(serde_json::json!({ "assigned": role_name })))
 }
 
@@ -211,6 +220,7 @@ pub async fn assign_role(
 pub async fn revoke_role(
     State(state): State<AppState>,
     auth: Authenticated,
+    ClientIp(ip): ClientIp,
     Path((id, role_name)): Path<(String, String)>,
 ) -> ApiResult<Json<serde_json::Value>> {
     auth.require_full_scope()?;
@@ -223,7 +233,7 @@ pub async fn revoke_role(
     .await?;
     let principal_id = parse_principal_id(&id)?;
 
-    let target = state.identity().get_principal(principal_id).await?;
+    let target = same_org_principal(&state, &auth, principal_id).await?;
     let role = state
         .identity()
         .get_role_by_name(target.org_id, &role_name)
@@ -231,7 +241,7 @@ pub async fn revoke_role(
         .map_err(|_| ApiError::BadRequest(format!("unknown role: {role_name}")))?;
     state.identity().revoke_role(principal_id, role.id).await?;
 
-    audit_role_change(&state, &auth, principal_id, &role_name, "role.revoke").await;
+    audit_role_change(&state, &auth, principal_id, &role_name, "role.revoke", ip).await;
     Ok(Json(serde_json::json!({ "revoked": role_name })))
 }
 
@@ -240,6 +250,7 @@ pub async fn revoke_role(
 pub async fn disable(
     State(state): State<AppState>,
     auth: Authenticated,
+    ClientIp(ip): ClientIp,
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     set_disabled(
@@ -248,6 +259,7 @@ pub async fn disable(
         &id,
         Some(OffsetDateTime::now_utc()),
         "principal.disable",
+        ip,
     )
     .await
 }
@@ -256,9 +268,10 @@ pub async fn disable(
 pub async fn enable(
     State(state): State<AppState>,
     auth: Authenticated,
+    ClientIp(ip): ClientIp,
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    set_disabled(&state, &auth, &id, None, "principal.enable").await
+    set_disabled(&state, &auth, &id, None, "principal.enable", ip).await
 }
 
 #[derive(Serialize)]
@@ -271,6 +284,7 @@ pub struct ReissueResponse {
 pub async fn reissue_recovery_codes(
     State(state): State<AppState>,
     auth: Authenticated,
+    ClientIp(ip): ClientIp,
     Path(id): Path<String>,
 ) -> ApiResult<Json<ReissueResponse>> {
     auth.require_full_scope()?;
@@ -286,6 +300,8 @@ pub async fn reissue_recovery_codes(
             None,
         )
         .await?;
+        // Admins may only reissue for principals in their own org.
+        same_org_principal(&state, &auth, principal_id).await?;
     }
 
     state
@@ -309,7 +325,7 @@ pub async fn reissue_recovery_codes(
             decision: AuditDecision::Allow,
             assurance: Some(auth.assurance()),
             reason: Some(format!("for {principal_id}")),
-            ip: None,
+            ip,
         },
     )
     .await;
@@ -325,6 +341,7 @@ async fn set_disabled(
     id: &str,
     disabled_at: Option<OffsetDateTime>,
     action: &str,
+    ip: Option<IpAddr>,
 ) -> ApiResult<Json<serde_json::Value>> {
     auth.require_full_scope()?;
     require_permission(
@@ -335,6 +352,7 @@ async fn set_disabled(
     )
     .await?;
     let principal_id = parse_principal_id(id)?;
+    same_org_principal(state, auth, principal_id).await?;
     state
         .identity()
         .set_principal_disabled(principal_id, disabled_at)
@@ -350,7 +368,7 @@ async fn set_disabled(
             decision: AuditDecision::Allow,
             assurance: Some(auth.assurance()),
             reason: Some(format!("target {principal_id}")),
-            ip: None,
+            ip,
         },
     )
     .await;
@@ -363,6 +381,7 @@ async fn audit_role_change(
     target: PrincipalId,
     role: &str,
     action: &str,
+    ip: Option<IpAddr>,
 ) {
     audit::record(
         state,
@@ -374,7 +393,7 @@ async fn audit_role_change(
             decision: AuditDecision::Allow,
             assurance: Some(auth.assurance()),
             reason: Some(format!("{role} on {target}")),
-            ip: None,
+            ip,
         },
     )
     .await;

@@ -16,6 +16,7 @@ pub mod metrics;
 pub mod ratelimit;
 pub mod routes;
 pub mod runtime;
+pub mod seed;
 pub mod state;
 
 pub use config::Config;

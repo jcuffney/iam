@@ -180,10 +180,21 @@ fn passkey_to_core(
 
     // Read the mirrored fields through the danger-credential-internals view.
     let cred: webauthn_rs::prelude::Credential = passkey.clone().into();
+    // Serialize each transport via serde, which yields the canonical WebAuthn
+    // spec strings ("usb", "nfc", "ble", "internal", "hybrid"); never via Debug,
+    // whose format is not a stable contract.
     let transports = cred
         .transports
         .as_ref()
-        .map(|ts| ts.iter().map(|t| format!("{t:?}").to_lowercase()).collect())
+        .map(|ts| {
+            ts.iter()
+                .filter_map(|t| {
+                    serde_json::to_value(t)
+                        .ok()
+                        .and_then(|v| v.as_str().map(String::from))
+                })
+                .collect()
+        })
         .unwrap_or_default();
 
     Ok(PasskeyCredential {

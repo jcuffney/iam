@@ -28,7 +28,7 @@ pub async fn limit_by_ip(
     next: Next,
 ) -> Result<Response, ApiError> {
     let (parts, body) = req.into_parts();
-    if let Some(ip) = client_ip(&parts)
+    if let Some(ip) = client_ip(&parts, state.trusted_proxy_hops())
         && state.limiters().by_ip.check_key(&ip).is_err()
     {
         metrics::rate_limited("ip");
@@ -39,9 +39,12 @@ pub async fn limit_by_ip(
     Ok(next.run(Request::from_parts(parts, body)).await)
 }
 
-/// Handler helper: limit by principal id. Called once the principal is known
-/// (e.g. `/auth/start` after resolving the handle, `/register/device/start`
-/// after authentication).
+/// Handler helper: limit by principal id. Applied ONLY to authenticated actions
+/// (e.g. `/register/device/start`). It is deliberately NOT used on pre-auth
+/// endpoints keyed by the *target* handle — doing so would let anyone who knows
+/// a handle exhaust that principal's bucket and lock the victim out. Pre-auth
+/// throttling is per-IP (see `limit_by_ip`), backed by argon2 + single-use
+/// codes.
 pub fn enforce_principal(state: &AppState, principal_id: Uuid) -> ApiResult<()> {
     if state
         .limiters()

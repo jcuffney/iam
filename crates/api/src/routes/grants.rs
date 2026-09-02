@@ -17,6 +17,7 @@ use crate::audit::{self, AuditEntry};
 use crate::error::{ApiError, ApiResult};
 use crate::extract::Authenticated;
 use crate::guard::require_permission;
+use crate::ip::ClientIp;
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -44,6 +45,7 @@ pub struct GrantView {
 pub async fn create(
     State(state): State<AppState>,
     auth: Authenticated,
+    ClientIp(ip): ClientIp,
     Json(req): Json<CreateGrantRequest>,
 ) -> ApiResult<Json<GrantView>> {
     auth.require_full_scope()?;
@@ -85,6 +87,23 @@ pub async fn create(
         )));
     }
 
+    // Reject constraints that are not yet enforced. `iam-policy` evaluates Spend
+    // and RateLimit against the SpendLedger/InvocationLedger seam
+    // (crates/policy/src/ledger.rs), but nothing records usage into those
+    // ledgers yet (there is no invocation-report path), so accepting such a
+    // constraint would advertise a cap that enforces nothing. Only TimeWindow
+    // (stateless, computed from the clock) is honored today.
+    for constraint in &req.constraints {
+        match constraint {
+            Constraint::TimeWindow { .. } => {}
+            Constraint::Spend { .. } | Constraint::RateLimit { .. } => {
+                return Err(ApiError::BadRequest(
+                    "spend and rate-limit constraints are not yet enforced; only time_window is supported".into(),
+                ));
+            }
+        }
+    }
+
     let grant = Grant {
         id: GrantId::new(),
         principal: req.principal_id,
@@ -107,7 +126,7 @@ pub async fn create(
             decision: AuditDecision::Allow,
             assurance: Some(auth.assurance()),
             reason: Some(format!("grant {} to {}", grant.id, grant.principal)),
-            ip: None,
+            ip,
         },
     )
     .await;
@@ -125,6 +144,7 @@ pub async fn create(
 pub async fn revoke(
     State(state): State<AppState>,
     auth: Authenticated,
+    ClientIp(ip): ClientIp,
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     auth.require_full_scope()?;
@@ -163,7 +183,7 @@ pub async fn revoke(
             decision: AuditDecision::Allow,
             assurance: Some(auth.assurance()),
             reason: Some(format!("grant {grant_id}")),
-            ip: None,
+            ip,
         },
     )
     .await;

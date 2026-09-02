@@ -60,8 +60,7 @@ pub async fn start(
         .await
         .map_err(|_| ApiError::Unauthorized("registration failed".into()))?;
 
-    enforce_principal(&state, principal.id.0)?;
-
+    // Pre-auth: throttled per-IP by the middleware, not per-target-principal.
     // Verify and CONSUME a matching registration token (single use).
     consume_one_time_code(
         &state,
@@ -183,7 +182,11 @@ pub struct RegisterFinishRequest {
 
 #[derive(Serialize)]
 pub struct RegisterFinishResponse {
-    pub principal_id: PrincipalId,
+    /// The owning principal — present on the authoritative (challenge-backed)
+    /// path, omitted on the idempotent retry path so the endpoint is not an
+    /// unauthenticated credential-id → principal-id oracle.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub principal_id: Option<PrincipalId>,
     pub credential_id: String,
     /// True when this call actually created the credential; false when a retry
     /// found it already present (idempotent).
@@ -209,11 +212,14 @@ pub async fn finish(
         .await?;
 
     let Some(challenge) = challenge else {
-        // Challenge gone: either expired, or this is a retry after a successful
-        // finish. Treat a known credential as the idempotent success case.
-        if let Ok(existing) = state.get_credential_owner(&raw_id).await {
+        // Challenge gone: either expired, or a retry after a successful finish.
+        // If the credential already exists, treat it as the idempotent success —
+        // but do NOT echo the owning principal (credential ids are semi-public,
+        // so returning the principal here would be an unauthenticated
+        // credential-id → principal-id oracle).
+        if state.get_credential_owner(&raw_id).await.is_ok() {
             return Ok(Json(RegisterFinishResponse {
-                principal_id: existing,
+                principal_id: None,
                 credential_id: b64url(&raw_id),
                 created: false,
             }));
@@ -254,7 +260,7 @@ pub async fn finish(
     .await;
 
     Ok(Json(RegisterFinishResponse {
-        principal_id: challenge.principal_id,
+        principal_id: Some(challenge.principal_id),
         credential_id: b64url(&registered.credential_id),
         created,
     }))

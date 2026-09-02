@@ -14,7 +14,6 @@ use crate::error::{ApiError, ApiResult};
 use crate::extract::Authenticated;
 use crate::ip::ClientIp;
 use crate::metrics;
-use crate::ratelimit::enforce_principal;
 use crate::state::AppState;
 
 const CHALLENGE_TTL: Duration = Duration::minutes(5);
@@ -49,8 +48,8 @@ pub async fn start(
         .await
         .map_err(|_| ApiError::Unauthorized("authentication failed".into()))?;
 
-    enforce_principal(&state, principal.id.0)?;
-
+    // Pre-auth: throttled per-IP by the middleware, never per-target-principal
+    // (that would let anyone lock out a victim by handle).
     if principal.is_disabled() {
         return Err(ApiError::Unauthorized("authentication failed".into()));
     }

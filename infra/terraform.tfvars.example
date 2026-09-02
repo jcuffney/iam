@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars for local applies (gitignored). CI supplies these as
+# TF_VAR_* environment variables from GitHub Actions secrets instead.
+
+cloudflare_api_token = "..." # Zone:DNS:Edit on cuffney.com only
+cloudflare_zone_id   = "..." # Cloudflare dashboard → cuffney.com → zone ID
+
+# Role passwords — you choose them; they must MATCH the one-time bootstrap SQL
+# (README step 4). URL-safe characters only (they are pasted into postgres://
+# URLs unescaped).
+db_owner_password       = "..."
+db_app_password         = "..."
+db_connections_password = "..."
+
+# From: cargo run -p iam-api --bin keygen
+iam_signing_keys        = "{\"active\":\"prod1\",\"keys\":{\"prod1\":\"...\"}}"
+iam_connections_enc_key = "..." # BACK THIS UP OUT OF BAND (password manager)
+
+# Any long random string, e.g.: openssl rand -base64 32
+metrics_token = "..."

@@ -53,8 +53,10 @@ struct Inner {
     invocations: Arc<dyn InvocationLedger>,
     token_ttl: Duration,
     session_ttl: Duration,
+    trusted_proxy_hops: usize,
     limiters: Arc<RateLimiters>,
     metrics: Option<PrometheusHandle>,
+    metrics_token: Option<String>,
 }
 
 /// Cheap-to-clone handle to the service's shared state.
@@ -76,8 +78,11 @@ pub struct AppStateParts {
     pub invocations: Arc<dyn InvocationLedger>,
     pub token_ttl: Duration,
     pub session_ttl: Duration,
+    pub trusted_proxy_hops: usize,
     pub limiters: Arc<RateLimiters>,
     pub metrics: Option<PrometheusHandle>,
+    /// Bearer token required by `GET /metrics`; `None` leaves it open (dev).
+    pub metrics_token: Option<String>,
 }
 
 impl AppState {
@@ -95,8 +100,10 @@ impl AppState {
                 invocations: parts.invocations,
                 token_ttl: parts.token_ttl,
                 session_ttl: parts.session_ttl,
+                trusted_proxy_hops: parts.trusted_proxy_hops,
                 limiters: parts.limiters,
                 metrics: parts.metrics,
+                metrics_token: parts.metrics_token,
             }),
         }
     }
@@ -134,10 +141,16 @@ impl AppState {
     pub fn session_ttl(&self) -> Duration {
         self.inner.session_ttl
     }
+    pub fn trusted_proxy_hops(&self) -> usize {
+        self.inner.trusted_proxy_hops
+    }
     pub fn limiters(&self) -> &Arc<RateLimiters> {
         &self.inner.limiters
     }
     pub fn metrics(&self) -> Option<&PrometheusHandle> {
         self.inner.metrics.as_ref()
+    }
+    pub fn metrics_token(&self) -> Option<&str> {
+        self.inner.metrics_token.as_deref()
     }
 }
