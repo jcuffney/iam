@@ -1,0 +1,78 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT g.id, g.principal_id, g.granted_by, g.connection_id, g.operation, g.constraints, g.expires_at, g.created_at, g.revoked_at, (c.revoked_at IS NULL AND (c.expires_at IS NULL OR c.expires_at > now())) AS connection_active FROM grants g JOIN connections c ON c.id = g.connection_id WHERE g.principal_id = $1 AND g.connection_id = $2 AND g.operation = $3 AND g.revoked_at IS NULL ORDER BY g.created_at DESC LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "principal_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "granted_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "connection_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "operation",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "constraints",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 6,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "revoked_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "connection_active",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      null
+    ]
+  },
+  "hash": "ad00b0801bf09b53134997a409d52ec750ac70722e048dd4ab876ba619031148"
+}

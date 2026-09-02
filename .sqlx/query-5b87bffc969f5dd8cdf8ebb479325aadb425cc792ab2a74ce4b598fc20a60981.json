@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT org_id, actor_id, asserted_id, action, decision, assurance, reason, ip, occurred_at FROM audit_events WHERE ($1::uuid IS NULL OR org_id = $1) AND ($2::uuid IS NULL OR actor_id = $2) AND ($3::text IS NULL OR action = $3) AND ($4::text IS NULL OR decision = $4) AND ($5::timestamptz IS NULL OR occurred_at >= $5) AND ($6::timestamptz IS NULL OR occurred_at <= $6) ORDER BY occurred_at DESC LIMIT $7",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "org_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "actor_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "asserted_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "action",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "decision",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "assurance",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "reason",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "ip",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "occurred_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "5b87bffc969f5dd8cdf8ebb479325aadb425cc792ab2a74ce4b598fc20a60981"
+}

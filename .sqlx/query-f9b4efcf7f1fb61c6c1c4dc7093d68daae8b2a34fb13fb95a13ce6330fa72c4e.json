@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE credentials SET passkey_data = $2, sign_count = $3, last_used_at = $4 WHERE credential_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Bytea",
+        "Int8",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f9b4efcf7f1fb61c6c1c4dc7093d68daae8b2a34fb13fb95a13ce6330fa72c4e"
+}

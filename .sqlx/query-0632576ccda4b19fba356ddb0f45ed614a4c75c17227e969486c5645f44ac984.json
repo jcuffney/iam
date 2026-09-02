@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, principal_id, granted_by, connection_id, operation, constraints, expires_at, created_at, revoked_at FROM grants WHERE principal_id = $1 AND revoked_at IS NULL ORDER BY created_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "principal_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "granted_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "connection_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "operation",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "constraints",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 6,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "revoked_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "0632576ccda4b19fba356ddb0f45ed614a4c75c17227e969486c5645f44ac984"
+}

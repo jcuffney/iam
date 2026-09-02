@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT credential_id, principal_id, passkey_data, sign_count, transports, aaguid, nickname, created_at, last_used_at FROM credentials WHERE principal_id = $1 ORDER BY created_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "credential_id",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 1,
+        "name": "principal_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "passkey_data",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 3,
+        "name": "sign_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "transports",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 5,
+        "name": "aaguid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "nickname",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "last_used_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "fa92851dd92abc3f1725b7de18e05691e537087e9d8ddaa943dfeb82c71de949"
+}

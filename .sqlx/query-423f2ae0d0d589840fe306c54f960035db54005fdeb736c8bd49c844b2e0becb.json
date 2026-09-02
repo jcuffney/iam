@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT secret_ciphertext, secret_nonce FROM connections WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "secret_ciphertext",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 1,
+        "name": "secret_nonce",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "423f2ae0d0d589840fe306c54f960035db54005fdeb736c8bd49c844b2e0becb"
+}

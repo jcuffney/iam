@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE connections SET refresh_status = $2, last_refreshed_at = $3, expires_at = COALESCE($4, expires_at) WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2d1ed2f4ef749190f799536c2259b1304ca6b402ca8579ebe0b6b5fe0d47fcf6"
+}

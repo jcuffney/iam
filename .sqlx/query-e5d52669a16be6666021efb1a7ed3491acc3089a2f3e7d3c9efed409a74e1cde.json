@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM one_time_codes WHERE principal_id = $1 AND purpose = $2 AND used_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e5d52669a16be6666021efb1a7ed3491acc3089a2f3e7d3c9efed409a74e1cde"
+}
