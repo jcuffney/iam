@@ -9,7 +9,6 @@ use async_trait::async_trait;
 use iam_core::{Capability, CapabilityRef, Connection, ConnectionId, Grant, GrantId, PrincipalId};
 use time::OffsetDateTime;
 
-use crate::crypto::Sealed;
 use crate::error::ConnectionsResult;
 
 /// A grant plus whether the connection behind it is currently active. This is
@@ -22,12 +21,15 @@ pub struct GrantForAuthorization {
     pub connection_active: bool,
 }
 
-/// Everything needed to create a connection: the metadata, the sealed secret,
-/// an optional sealed refresh token, and the declared capabilities.
+/// Everything needed to create a connection: the metadata, the plaintext
+/// secret, an optional plaintext refresh token, and the declared capabilities.
+///
+/// Secrets are passed in the clear and sealed by the store with its own key —
+/// the key never leaves this crate, which is the whole point of the isolation.
 pub struct NewConnection<'a> {
     pub connection: &'a Connection,
-    pub secret: Sealed,
-    pub refresh: Option<Sealed>,
+    pub secret: &'a [u8],
+    pub refresh: Option<&'a [u8]>,
     pub capabilities: &'a [Capability],
 }
 

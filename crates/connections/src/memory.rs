@@ -42,15 +42,16 @@ impl MemoryConnectionsStore {
 #[async_trait]
 impl ConnectionsStore for MemoryConnectionsStore {
     async fn create_connection(&self, new: NewConnection<'_>) -> ConnectionsResult<()> {
+        // Seal with this store's own key; plaintext never persists.
+        let secret = self.key.seal(new.secret)?;
+        let refresh = match new.refresh {
+            Some(r) => Some(self.key.seal(r)?),
+            None => None,
+        };
         let mut d = self.data.lock().unwrap();
         d.connections.insert(
             new.connection.id,
-            ConnRow {
-                connection: new.connection.clone(),
-                secret: new.secret,
-                refresh: new.refresh,
-                capabilities: new.capabilities.to_vec(),
-            },
+            ConnRow { connection: new.connection.clone(), secret, refresh, capabilities: new.capabilities.to_vec() },
         );
         Ok(())
     }
@@ -211,7 +212,7 @@ mod tests {
         };
         s.create_connection(NewConnection {
             connection: &conn,
-            secret: EncryptionKey::from_bytes(&[3u8; 32]).unwrap().seal(b"tok").unwrap(),
+            secret: b"tok",
             refresh: None,
             capabilities: &[Capability { connection_id: conn.id, operation: cap.operation.clone() }],
         })
@@ -249,7 +250,7 @@ mod tests {
         let cap = CapabilityRef { connection_id: conn.id, operation: CapabilityOperation::Opaque };
         s.create_connection(NewConnection {
             connection: &conn,
-            secret: EncryptionKey::from_bytes(&[3u8; 32]).unwrap().seal(b"tok").unwrap(),
+            secret: b"tok",
             refresh: None,
             capabilities: &[Capability { connection_id: conn.id, operation: CapabilityOperation::Opaque }],
         })

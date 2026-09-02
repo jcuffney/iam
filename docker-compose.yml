@@ -18,8 +18,10 @@ services:
 
   dynamodb:
     image: amazon/dynamodb-local:latest
+    # Host port 8001 to avoid clashing with other local services that commonly
+    # take 8000; the container still listens on 8000 internally.
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8001:8000"
     # -inMemory is fine: this store only ever holds ephemeral challenges and sessions
     command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
 

@@ -72,8 +72,13 @@ fn row_to_connection(
 impl ConnectionsStore for PgConnectionsStore {
     async fn create_connection(&self, new: NewConnection<'_>) -> ConnectionsResult<()> {
         let c = new.connection;
-        let (refresh_ct, refresh_nonce) = match &new.refresh {
-            Some(r) => (Some(r.ciphertext.clone()), Some(r.nonce.clone())),
+        // Seal with this store's own key; plaintext never reaches the database.
+        let secret = self.key.seal(new.secret)?;
+        let (refresh_ct, refresh_nonce) = match new.refresh {
+            Some(r) => {
+                let sealed = self.key.seal(r)?;
+                (Some(sealed.ciphertext), Some(sealed.nonce))
+            }
             None => (None, None),
         };
         let mut tx = self.pool.begin().await?;
@@ -88,8 +93,8 @@ impl ConnectionsStore for PgConnectionsStore {
             c.provider,
             c.kind.to_string(),
             &c.scopes_held,
-            new.secret.ciphertext,
-            new.secret.nonce,
+            secret.ciphertext,
+            secret.nonce,
             refresh_ct,
             refresh_nonce,
             c.expires_at,

@@ -119,8 +119,8 @@ mod tests {
         store
             .create_connection(NewConnection {
                 connection: &conn,
-                secret: key.seal(b"tok").unwrap(),
-                refresh: Some(key.seal(b"refresh").unwrap()),
+                secret: b"tok",
+                refresh: Some(b"refresh"),
                 capabilities: &[],
             })
             .await
