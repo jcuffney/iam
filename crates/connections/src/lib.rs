@@ -29,11 +29,13 @@ pub use store::{ConnectionsStore, GrantForAuthorization, NewConnection};
 use sqlx::postgres::PgPoolOptions;
 
 /// Connect to the connections database with its own pool.
+///
+/// Lazy for the same reason as the identity pool: startup must not open (or
+/// wake) database connections; errors surface at first use instead.
 pub async fn connect(database_url: &str, max_connections: u32) -> ConnectionsResult<sqlx::PgPool> {
     let pool = PgPoolOptions::new()
         .max_connections(max_connections)
-        .connect(database_url)
-        .await?;
+        .connect_lazy(database_url)?;
     Ok(pool)
 }
 

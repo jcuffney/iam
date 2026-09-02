@@ -67,11 +67,24 @@ async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "status": "ok" }))
 }
 
-/// Prometheus exposition. Open locally; protect at the network layer when
-/// deployed.
+/// Prometheus exposition. Open when no token is configured (local dev). When
+/// `IAM_METRICS_TOKEN` is set, requires `Authorization: Bearer <token>` — the
+/// API edge forwards every path here, so the gate has to live in the app.
 async fn metrics_endpoint(
     axum::extract::State(state): axum::extract::State<AppState>,
+    headers: axum::http::HeaderMap,
 ) -> Result<String, axum::http::StatusCode> {
+    if let Some(expected) = state.metrics_token() {
+        use subtle::ConstantTimeEq;
+        let authorized = headers
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .is_some_and(|token| token.as_bytes().ct_eq(expected.as_bytes()).into());
+        if !authorized {
+            return Err(axum::http::StatusCode::UNAUTHORIZED);
+        }
+    }
     match state.metrics() {
         Some(handle) => Ok(handle.render()),
         None => Ok(String::new()),

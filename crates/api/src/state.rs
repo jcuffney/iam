@@ -56,6 +56,7 @@ struct Inner {
     trusted_proxy_hops: usize,
     limiters: Arc<RateLimiters>,
     metrics: Option<PrometheusHandle>,
+    metrics_token: Option<String>,
 }
 
 /// Cheap-to-clone handle to the service's shared state.
@@ -80,6 +81,8 @@ pub struct AppStateParts {
     pub trusted_proxy_hops: usize,
     pub limiters: Arc<RateLimiters>,
     pub metrics: Option<PrometheusHandle>,
+    /// Bearer token required by `GET /metrics`; `None` leaves it open (dev).
+    pub metrics_token: Option<String>,
 }
 
 impl AppState {
@@ -100,6 +103,7 @@ impl AppState {
                 trusted_proxy_hops: parts.trusted_proxy_hops,
                 limiters: parts.limiters,
                 metrics: parts.metrics,
+                metrics_token: parts.metrics_token,
             }),
         }
     }
@@ -145,5 +149,8 @@ impl AppState {
     }
     pub fn metrics(&self) -> Option<&PrometheusHandle> {
         self.inner.metrics.as_ref()
+    }
+    pub fn metrics_token(&self) -> Option<&str> {
+        self.inner.metrics_token.as_deref()
     }
 }

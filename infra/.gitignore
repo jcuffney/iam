@@ -1,0 +1,7 @@
+# .terraform.lock.hcl IS committed — it pins provider builds for CI.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example
+crash.log

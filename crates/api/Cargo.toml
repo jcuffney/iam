@@ -7,9 +7,9 @@ repository.workspace = true
 default-run = "iam"
 
 [features]
-# Lambda entry point, deployed behind API Gateway later. Handler code never sees
-# lambda types; this only swaps the runtime in main.
-lambda = ["dep:lambda_http", "openssl/vendored"]
+# Lambda entry points, deployed behind API Gateway. Handler code never sees
+# lambda types; this only swaps the runtime in each binary's main.
+lambda = ["dep:lambda_http", "dep:lambda_runtime", "openssl/vendored"]
 
 [dependencies]
 iam-core.workspace = true
@@ -40,7 +40,9 @@ dotenvy.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 webauthn-rs.workspace = true
+subtle.workspace = true
 lambda_http = { workspace = true, optional = true }
+lambda_runtime = { workspace = true, optional = true }
 openssl = { version = "0.10", optional = true }
 
 [dev-dependencies]
@@ -55,6 +57,10 @@ path = "src/bin/iam.rs"
 [[bin]]
 name = "seed"
 path = "src/bin/seed.rs"
+
+[[bin]]
+name = "admin"
+path = "src/bin/admin.rs"
 
 [[bin]]
 name = "keygen"

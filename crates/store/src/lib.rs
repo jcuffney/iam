@@ -25,14 +25,17 @@ pub use traits::{AuditStore, ChallengeStore, IdentityStore, SessionStore};
 use sqlx::postgres::PgPoolOptions;
 
 /// Connect to Postgres and return a pool.
+///
+/// Lazy: connections open on first acquire, so process startup (and health
+/// checks) never touch — or wake — a scale-to-zero database. The cost is that a
+/// bad URL/credential surfaces at the first query instead of at boot.
 pub async fn connect_postgres(
     database_url: &str,
     max_connections: u32,
 ) -> StoreResult<sqlx::PgPool> {
     let pool = PgPoolOptions::new()
         .max_connections(max_connections)
-        .connect(database_url)
-        .await?;
+        .connect_lazy(database_url)?;
     Ok(pool)
 }
 

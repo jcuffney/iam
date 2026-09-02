@@ -82,6 +82,7 @@ impl Env {
             trusted_proxy_hops: 0,
             limiters: Arc::new(RateLimiters::new(10_000)),
             metrics: None,
+            metrics_token: None,
         });
 
         let router = build_router(state);

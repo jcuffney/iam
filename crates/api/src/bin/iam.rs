@@ -67,12 +67,72 @@ async fn serve(app: axum::Router, addr: &str) -> anyhow::Result<()> {
 
 #[cfg(feature = "lambda")]
 async fn serve(app: axum::Router, _addr: &str) -> anyhow::Result<()> {
-    // Behind API Gateway there is no listener; the router is driven directly.
-    // Client IP comes from X-Forwarded-For (see ip::client_ip).
+    // Behind API Gateway there is no listener; the router is driven directly,
+    // so ConnectInfo is absent — and X-Forwarded-For is client-controlled, so
+    // it is not a safe substitute. API Gateway terminates the client connection
+    // and records the true peer IP in the request context; surface that as
+    // ConnectInfo so `ip::client_ip` (and rate limiting / audit) work unchanged
+    // with IAM_TRUSTED_PROXY_HOPS=0.
+    let app = app.layer(axum::middleware::map_request(shim_connect_info));
     lambda_http::run(app)
         .await
         .map_err(|e| anyhow::anyhow!("lambda runtime error: {e}"))?;
     Ok(())
+}
+
+#[cfg(feature = "lambda")]
+async fn shim_connect_info(mut req: axum::extract::Request) -> axum::extract::Request {
+    use std::net::SocketAddr;
+
+    use axum::extract::ConnectInfo;
+
+    if let Some(ip) = lambda_source_ip(req.extensions()) {
+        // Port is not part of the event; 0 is fine — only the IP is ever read.
+        req.extensions_mut()
+            .insert(ConnectInfo(SocketAddr::new(ip, 0)));
+    }
+    req
+}
+
+/// The authoritative client IP recorded by API Gateway (HTTP API, payload v2).
+/// Any other event shape yields `None`, which degrades to "no client IP"
+/// (rate limiting skips, audit records null) rather than an error.
+#[cfg(feature = "lambda")]
+fn lambda_source_ip(extensions: &axum::http::Extensions) -> Option<std::net::IpAddr> {
+    use lambda_http::request::RequestContext;
+
+    match extensions.get::<RequestContext>()? {
+        RequestContext::ApiGatewayV2(ctx) => ctx.http.source_ip.as_deref()?.parse().ok(),
+        _ => None,
+    }
+}
+
+#[cfg(all(test, feature = "lambda"))]
+mod lambda_tests {
+    use super::lambda_source_ip;
+
+    #[test]
+    fn source_ip_comes_from_the_v2_request_context() {
+        use lambda_http::aws_lambda_events::apigw::ApiGatewayV2httpRequestContext;
+        use lambda_http::request::RequestContext;
+
+        // The event structs are #[non_exhaustive]; mutate a default instead.
+        let mut ctx = ApiGatewayV2httpRequestContext::default();
+        ctx.http.source_ip = Some("203.0.113.9".to_string());
+
+        let mut extensions = axum::http::Extensions::new();
+        extensions.insert(RequestContext::ApiGatewayV2(ctx));
+
+        assert_eq!(
+            lambda_source_ip(&extensions),
+            Some("203.0.113.9".parse().unwrap())
+        );
+    }
+
+    #[test]
+    fn missing_context_yields_none() {
+        assert_eq!(lambda_source_ip(&axum::http::Extensions::new()), None);
+    }
 }
 
 fn init_tracing() {

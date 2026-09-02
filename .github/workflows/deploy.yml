@@ -1,0 +1,132 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write # AWS OIDC — no long-lived keys
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Build against the committed .sqlx metadata; no database at build time.
+  SQLX_OFFLINE: "true"
+  AWS_REGION: us-east-1
+  API_URL: https://api.jarvis.cuffney.com
+
+# One deploy at a time; a queued push waits rather than interleaving applies.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # Native arm64 (free for public repos): Lambda runs arm64, and compiling
+    # natively sidesteps cross-compiling the vendored OpenSSL the `lambda`
+    # feature pulls in.
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-arm64-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-arm64-cargo-release-
+
+      - name: Build Lambda binaries
+        run: cargo build --release -p iam-api --features lambda --bin iam --bin admin
+
+      - name: Package zips (custom runtime layout - a `bootstrap` at zip root)
+        run: |
+          for bin in iam admin; do
+            mkdir -p "target/lambda/$bin"
+            cp "target/release/$bin" "target/lambda/$bin/bootstrap"
+            (cd "target/lambda/$bin" && zip -j bootstrap.zip bootstrap && rm bootstrap)
+          done
+
+      - name: Upload zips
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-zips
+          path: target/lambda/*/bootstrap.zip
+          retention-days: 1
+          if-no-files-found: error
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download zips
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-zips
+          path: target/lambda
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform apply
+        working-directory: infra
+        env:
+          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_cloudflare_zone_id: ${{ vars.CLOUDFLARE_ZONE_ID }}
+          TF_VAR_db_owner_password: ${{ secrets.DB_OWNER_PASSWORD }}
+          TF_VAR_db_app_password: ${{ secrets.DB_APP_PASSWORD }}
+          TF_VAR_db_connections_password: ${{ secrets.DB_CONNECTIONS_PASSWORD }}
+          TF_VAR_iam_signing_keys: ${{ secrets.IAM_SIGNING_KEYS }}
+          TF_VAR_iam_connections_enc_key: ${{ secrets.IAM_CONNECTIONS_ENC_KEY }}
+          TF_VAR_metrics_token: ${{ secrets.IAM_METRICS_TOKEN }}
+        run: |
+          terraform init -input=false
+          terraform apply -input=false -auto-approve
+
+      # New code is live seconds before migrations run, so migrations follow
+      # expand/contract discipline: additive first, drop in a later deploy.
+      - name: Run migrations (admin Lambda)
+        run: |
+          err=$(aws lambda invoke --function-name iam-admin \
+            --payload '{"task":"migrate"}' \
+            --cli-binary-format raw-in-base64-out \
+            --cli-read-timeout 330 \
+            --query FunctionError --output text out.json)
+          cat out.json; echo
+          if [ "$err" != "None" ]; then
+            echo "::error::migration invoke failed ($err)"
+            exit 1
+          fi
+
+      - name: Smoke test
+        run: |
+          curl -fsS --retry 5 --retry-delay 5 --retry-all-errors "$API_URL/health"
+          curl -fsS "$API_URL/.well-known/jwks.json" > /dev/null
+
+          # DB-touching probe. Lazy pools defer bad DB config to first query,
+          # so /health alone proves nothing about Postgres. An unknown handle
+          # returns 401 only AFTER a real identity-store lookup; a 5xx means
+          # the database path is broken. First request may ride out an Aurora
+          # resume (~15s), hence the generous max-time.
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+            -X POST "$API_URL/auth/start" \
+            -H 'content-type: application/json' \
+            -d '{"org_slug":"cuffney","handle":"deploy-smoke-probe"}')
+          echo "auth/start probe returned $code"
+          case "$code" in
+            4*) echo "database path OK" ;;
+            *) echo "::error::expected 4xx from auth/start probe, got $code"; exit 1 ;;
+          esac
