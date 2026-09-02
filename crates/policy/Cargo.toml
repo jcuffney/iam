@@ -1,0 +1,12 @@
+[package]
+name = "iam-policy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Pure authorization functions over iam-core types. No IO, no store handles:
+# callers load data, policy returns decisions.
+[dependencies]
+iam-core.workspace = true
+time.workspace = true

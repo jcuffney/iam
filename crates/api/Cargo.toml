@@ -1,0 +1,61 @@
+[package]
+name = "iam-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+default-run = "iam"
+
+[features]
+# Lambda entry point, deployed behind API Gateway later. Handler code never sees
+# lambda types; this only swaps the runtime in main.
+lambda = ["dep:lambda_http", "openssl/vendored"]
+
+[dependencies]
+iam-core.workspace = true
+iam-auth.workspace = true
+iam-policy.workspace = true
+iam-store.workspace = true
+iam-connections.workspace = true
+
+axum.workspace = true
+tokio.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+governor.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
+base64.workspace = true
+getrandom.workspace = true
+ed25519-dalek.workspace = true
+time.workspace = true
+uuid.workspace = true
+url.workspace = true
+dotenvy.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+webauthn-rs.workspace = true
+lambda_http = { workspace = true, optional = true }
+openssl = { version = "0.10", optional = true }
+
+[dev-dependencies]
+webauthn-authenticator-rs.workspace = true
+http-body-util.workspace = true
+tower = { workspace = true, features = ["util"] }
+
+[[bin]]
+name = "iam"
+path = "src/bin/iam.rs"
+
+[[bin]]
+name = "seed"
+path = "src/bin/seed.rs"
+
+[[bin]]
+name = "keygen"
+path = "src/bin/keygen.rs"

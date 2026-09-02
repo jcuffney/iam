@@ -1,0 +1,12 @@
+[package]
+name = "iam-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Domain types only. Nothing of ours, and nothing beyond serde/uuid/time.
+[dependencies]
+serde.workspace = true
+uuid.workspace = true
+time.workspace = true

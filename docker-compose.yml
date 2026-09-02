@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      # Creates the two isolated databases/roles: iam (identity) and iam_connections (outbound secrets).
+      - ./compose/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  dynamodb:
+    image: amazon/dynamodb-local:latest
+    ports:
+      - "127.0.0.1:8000:8000"
+    # -inMemory is fine: this store only ever holds ephemeral challenges and sessions
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+
+  # Integration tests only — never part of the cargo run hot path.
+  localstack:
+    image: localstack/localstack:latest
+    profiles: ["integration"]
+    ports:
+      - "127.0.0.1:4566:4566"
+    environment:
+      SERVICES: dynamodb,secretsmanager
+
+volumes:
+  pgdata:
